@@ -240,9 +240,10 @@ if __name__ == '__main__':
                 "failed": 1,
                 "msg": "could not create: %s" % jobdir
             }))
+            sys.exit(1)
+
     # immediately exit this process, leaving an orphaned process
     # running which immediately forks a supervisory timing process
-
     try:
         pid = os.fork()
         if pid:
