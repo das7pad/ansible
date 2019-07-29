@@ -77,7 +77,6 @@ REPLACER_SELINUX = b"<<SELINUX_SPECIAL_FILESYSTEMS>>"
 
 # We could end up writing out parameters with unicode characters so we need to
 # specify an encoding for the python source file
-ENCODING_STRING = u'# -*- coding: utf-8 -*-'
 b_ENCODING_STRING = b'# -*- coding: utf-8 -*-'
 
 # module_common is relative to module_utils, so fix the path
@@ -85,8 +84,7 @@ _MODULE_UTILS_PATH = os.path.join(os.path.dirname(__file__), '..', 'module_utils
 
 # ******************************************************************************
 
-ANSIBALLZ_TEMPLATE = u'''%(shebang)s
-%(coding)s
+ANSIBALLZ_TEMPLATE = u'''#!/usr/bin/python
 _ANSIBALLZ_WRAPPER = True # For test-module.py script to tell this is a ANSIBALLZ_WRAPPER
 # This code is part of Ansible, but is an independent component.
 # The code in this particular templatable string, and this templatable string
@@ -946,10 +944,6 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
                                        'Look at traceback for that process for debugging information.')
         zipdata = to_text(zipdata, errors='surrogate_or_strict')
 
-        shebang, interpreter = _get_shebang(u'/usr/bin/python', task_vars, templar)
-        if shebang is None:
-            shebang = u'#!/usr/bin/python'
-
         # FUTURE: the module cache entry should be invalidated if we got this value from a host-dependent source
         rlimit_nofile = C.config.get_config_value('PYTHON_MODULE_RLIMIT_NOFILE', variables=task_vars)
 
@@ -987,8 +981,6 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
             zipdata=zipdata,
             ansible_module=module_name,
             params=python_repred_params,
-            shebang=shebang,
-            coding=ENCODING_STRING,
             year=now.year,
             month=now.month,
             day=now.day,
@@ -1077,11 +1069,15 @@ def modify_module(module_name, module_path, module_args, templar, task_vars=None
         b_lines = b_module_data.split(b"\n", 1)
         if b_lines[0].startswith(b"#!"):
             b_shebang = b_lines[0].strip()
-            # shlex.split on python-2.6 needs bytes.  On python-3.x it needs text
-            args = shlex.split(to_native(b_shebang[2:], errors='surrogate_or_strict'))
 
-            # _get_shebang() takes text strings
-            args = [to_text(a, errors='surrogate_or_strict') for a in args]
+            if b_shebang == b'#!/usr/bin/python':
+                args = ('python',)
+            else:
+                # shlex.split on python-2.6 needs bytes.  On python-3.x it needs text
+                args = shlex.split(to_native(b_shebang[2:], errors='surrogate_or_strict'))
+
+                # _get_shebang() takes text strings
+                args = [to_text(a, errors='surrogate_or_strict') for a in args]
             interpreter = args[0]
             b_new_shebang = to_bytes(_get_shebang(interpreter, task_vars, templar, args[1:])[0],
                                      errors='surrogate_or_strict', nonstring='passthru')
