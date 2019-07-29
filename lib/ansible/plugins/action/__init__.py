@@ -19,7 +19,7 @@ from abc import ABCMeta, abstractmethod
 
 from ansible import constants as C
 from ansible.errors import AnsibleError, AnsibleConnectionFailure, AnsibleActionSkip, AnsibleActionFail
-from ansible.executor.module_common import modify_module
+from ansible.executor.module_common import Module, ModuleInvocation
 from ansible.executor.interpreter_discovery import discover_interpreter, InterpreterDiscoveryRequiredError
 from ansible.module_utils.common._collections_compat import Sequence
 from ansible.module_utils.json_utils import _filter_non_json_lines
@@ -140,7 +140,7 @@ class ActionBase(with_metaclass(ABCMeta, object)):
             return True
         return False
 
-    def _configure_module(self, module_name, module_args, task_vars=None):
+    def _prepare_module_invocation(self, module_name, module_args, task_vars=None):
         '''
         Handles the loading and templating of the module code through the
         modify_module() function.
@@ -188,38 +188,56 @@ class ActionBase(with_metaclass(ABCMeta, object)):
         final_environment = dict()
         self._compute_environment_string(final_environment)
 
-        # modify_module will exit early if interpreter discovery is required; re-run after if necessary
-        for dummy in (1, 2):
-            try:
-                (module_data, module_style, module_shebang) = modify_module(module_name, module_path, module_args, self._templar,
-                                                                            task_vars=task_vars,
-                                                                            module_compression=self._play_context.module_compression,
-                                                                            async_timeout=self._task.async_val,
-                                                                            become=self._play_context.become,
-                                                                            become_method=self._play_context.become_method,
-                                                                            become_user=self._play_context.become_user,
-                                                                            become_password=self._play_context.become_pass,
-                                                                            become_flags=self._play_context.become_flags,
-                                                                            environment=final_environment)
-                break
-            except InterpreterDiscoveryRequiredError as idre:
-                self._discovered_interpreter = AnsibleUnsafeText(discover_interpreter(
-                    action=self,
-                    interpreter_name=idre.interpreter_name,
-                    discovery_mode=idre.discovery_mode,
-                    task_vars=task_vars))
+        module = Module(
+            name=module_name,
+            path=module_path,
+        )
+        become_spec = dict(
+            become=self._play_context.become,
+            become_method=self._play_context.become_method,
+            become_user=self._play_context.become_user,
+            become_password=self._play_context.become_pass,
+            become_flags=self._play_context.become_flags,
+        )
+        invocation = ModuleInvocation(
+            module=module,
+            args=module_args,
+            async_timeout=self._task.async_val,
+            become_spec=become_spec,
+            compression=self._play_context.module_compression,
+            environment=final_environment,
+            task_vars=task_vars,
+            templar=self._templar,
+        )
 
-                # update the local task_vars with the discovered interpreter (which might be None);
-                # we'll propagate back to the controller in the task result
-                discovered_key = 'discovered_interpreter_%s' % idre.interpreter_name
-                # store in local task_vars facts collection for the retry and any other usages in this worker
-                if task_vars.get('ansible_facts') is None:
-                    task_vars['ansible_facts'] = {}
-                task_vars['ansible_facts'][discovered_key] = self._discovered_interpreter
-                # preserve this so _execute_module can propagate back to controller as a fact
-                self._discovered_interpreter_key = discovered_key
+        # determine_shebang will exit early if interpreter discovery is required
+        try:
+            invocation.determine_shebang()
+        except InterpreterDiscoveryRequiredError as idre:
+            self._discovered_interpreter = AnsibleUnsafeText(discover_interpreter(
+                action=self,
+                interpreter_name=idre.interpreter_name,
+                discovery_mode=idre.discovery_mode,
+                task_vars=task_vars))
 
-        return (module_style, module_shebang, module_data, module_path)
+            # update the local task_vars with the discovered interpreter (which might be None);
+            # we'll propagate back to the controller in the task result
+            discovered_key = 'discovered_interpreter_%s' % idre.interpreter_name
+            # store in local task_vars facts collection for the retry and any other usages in this worker
+            if task_vars.get('ansible_facts') is None:
+                task_vars['ansible_facts'] = {}
+            task_vars['ansible_facts'][discovered_key] = self._discovered_interpreter
+            # preserve this so _execute_module can propagate back to controller as a fact
+            self._discovered_interpreter_key = discovered_key
+
+            # rerun with the discovered interpreter
+            invocation.determine_shebang()
+
+        return invocation
+
+    def _configure_module(self, module_name, module_args, task_vars=None):
+        invocation = self._prepare_module_invocation(module_name, module_args, task_vars)
+        return (invocation.module.style, invocation.shebang, invocation.compose_payload(), invocation.module.path)
 
     def _compute_environment_string(self, raw_environment_out=None):
         '''
@@ -762,28 +780,18 @@ class ActionBase(with_metaclass(ABCMeta, object)):
                             ' if they are responsible for removing it.')
         del delete_remote_tmp  # No longer used
 
-        tmpdir = self._connection._shell.tmpdir
-
-        # We set the module_style to new here so the remote_tmp is created
-        # before the module args are built if remote_tmp is needed (async).
-        # If the module_style turns out to not be new and we didn't create the
-        # remote tmp here, it will still be created. This must be done before
-        # calling self._update_module_args() so the module wrapper has the
-        # correct remote_tmp value set
-        if not self._is_pipelining_enabled("new", wrap_async) and tmpdir is None:
-            self._make_tmp_path()
-            tmpdir = self._connection._shell.tmpdir
-
         if task_vars is None:
             task_vars = dict()
+
+        # We may reuse existing modules on the node. Delay the creation of tmp dirs.
+        node_has_same_ansible = task_vars.get('ansible_node_has_same_ansible')
+        tmpdir = self._connection._shell.tmpdir
 
         # if a module name was not specified for this execution, use the action from the task
         if module_name is None:
             module_name = self._task.action
         if module_args is None:
             module_args = self._task.args
-
-        self._update_module_args(module_name, module_args, task_vars)
 
         # FIXME: convert async_wrapper.py to not rely on environment variables
         # make sure we get the right async_dir variable, backwards compatibility
@@ -806,7 +814,10 @@ class ActionBase(with_metaclass(ABCMeta, object)):
                 self._task.environment.append({"ANSIBLE_ASYNC_DIR": async_dir})
 
         # FUTURE: refactor this along with module build process to better encapsulate "smart wrapper" functionality
-        (module_style, shebang, module_data, module_path) = self._configure_module(module_name=module_name, module_args=module_args, task_vars=task_vars)
+        invocation = self._prepare_module_invocation(module_name, module_args, task_vars)
+        module_style = invocation.module.style
+        module_path = invocation.module.path
+        shebang = invocation.shebang
         display.vvv("Using module file %s" % module_path)
         if not shebang and module_style != 'binary':
             raise AnsibleError("module (%s) is missing interpreter line" % module_name)
@@ -814,7 +825,16 @@ class ActionBase(with_metaclass(ABCMeta, object)):
         self._used_interpreter = shebang
         remote_module_path = None
 
-        if not self._is_pipelining_enabled(module_style, wrap_async):
+        if node_has_same_ansible and invocation.module.is_packaged and invocation.module.substyle == 'python':
+            in_data = to_bytes(json.dumps(dict(ANSIBLE_MODULE_ARGS=module_args,)), errors='surrogate_or_strict')
+            module = invocation.module.get_py_module_name()
+            module_already_on_remote = True
+        else:
+            in_data = None
+            module = None
+            module_already_on_remote = False
+
+        if not self._is_pipelining_enabled(module_style, wrap_async) and not module_already_on_remote:
             # we might need remote tmp dir
             if tmpdir is None:
                 self._make_tmp_path()
@@ -822,6 +842,10 @@ class ActionBase(with_metaclass(ABCMeta, object)):
 
             remote_module_filename = self._connection._shell.get_remote_filename(module_path)
             remote_module_path = self._connection._shell.join_path(tmpdir, 'AnsiballZ_%s' % remote_module_filename)
+            module = remote_module_path
+
+        # called just before creating the payload.
+        self._update_module_args(module_name, module_args, task_vars)
 
         args_file_path = None
         if module_style in ('old', 'non_native_want_json', 'binary'):
@@ -833,7 +857,7 @@ class ActionBase(with_metaclass(ABCMeta, object)):
             if module_style == 'binary':
                 self._transfer_file(module_path, remote_module_path)
             else:
-                self._transfer_data(remote_module_path, module_data)
+                self._transfer_data(remote_module_path, invocation.compose_payload())
             if module_style == 'old':
                 # we need to dump the module args to a k=v string in a file on
                 # the remote system, which can be read and parsed by the module
@@ -861,26 +885,36 @@ class ActionBase(with_metaclass(ABCMeta, object)):
             remote_files.append(args_file_path)
 
         sudoable = True
-        in_data = None
         cmd = ""
 
         if wrap_async and not self._connection.always_pipeline_modules:
             # configure, upload, and chmod the async_wrapper module
-            (async_module_style, shebang, async_module_data, async_module_path) = self._configure_module(module_name='async_wrapper', module_args=dict(),
-                                                                                                         task_vars=task_vars)
-            async_module_remote_filename = self._connection._shell.get_remote_filename(async_module_path)
-            remote_async_module_path = self._connection._shell.join_path(tmpdir, async_module_remote_filename)
-            self._transfer_data(remote_async_module_path, async_module_data)
-            remote_files.append(remote_async_module_path)
-
-            async_limit = self._task.async_val
-            async_jid = str(random.randint(0, 999999999999))
+            async_invocation = self._prepare_module_invocation('async_wrapper', module_args=dict(), task_vars=task_vars)
 
             # call the interpreter for async_wrapper directly
             # this permits use of a script for an interpreter on non-Linux platforms
             # TODO: re-implement async_wrapper as a regular module to avoid this special case
-            interpreter = shebang.replace('#!', '').strip()
-            async_cmd = [interpreter, remote_async_module_path, async_jid, async_limit, remote_module_path]
+            interpreter = async_invocation.shebang.replace('#!', '').strip()
+
+            async_limit = self._task.async_val
+            async_jid = str(random.randint(0, 999999999999))
+
+            if node_has_same_ansible:
+                async_cmd = [
+                    interpreter,
+                    '-m',
+                    async_invocation.module.get_py_module_name(),
+                    async_jid,
+                    async_limit,
+                    module,
+                ]
+            else:
+                async_module_remote_filename = self._connection._shell.get_remote_filename(async_invocation.module.path)
+                remote_async_module_path = self._connection._shell.join_path(tmpdir, async_module_remote_filename)
+                self._transfer_data(remote_async_module_path, async_invocation.compose_payload())
+                remote_files.append(remote_async_module_path)
+
+                async_cmd = [interpreter, remote_async_module_path, async_jid, async_limit, remote_module_path]
 
             if environment_string:
                 async_cmd.insert(0, environment_string)
@@ -896,10 +930,20 @@ class ActionBase(with_metaclass(ABCMeta, object)):
 
             cmd = " ".join(to_text(x) for x in async_cmd)
 
+        elif module_already_on_remote:
+            cmd = ' '.join(
+                [
+                    environment_string.strip(),
+                    shebang.replace("#!", "").strip(),
+                    '-m',
+                    module
+                ]
+            )
+
         else:
 
             if self._is_pipelining_enabled(module_style):
-                in_data = module_data
+                in_data = invocation.compose_payload()
                 display.vvv("Pipelining is enabled.")
             else:
                 cmd = remote_module_path
