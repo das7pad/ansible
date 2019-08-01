@@ -123,7 +123,7 @@ def _get_interpreter(module_path):
         module_fd.close()
 
 
-def _run_module(wrapped_cmd, jid, job_path):
+def _run_module(wrapped_cmd, jid, job_path, payload):
 
     tmp_job_path = job_path + ".tmp"
     jobfile = open(tmp_job_path, "w")
@@ -138,20 +138,26 @@ def _run_module(wrapped_cmd, jid, job_path):
     ipc_notifier.send(True)
     ipc_notifier.close()
 
+    is_module = wrapped_cmd.startswith('ansible.')
+
     outdata = ''
     filtered_outdata = ''
     stderr = ''
     try:
-        cmd = shlex.split(wrapped_cmd)
-        # call the module interpreter directly (for non-binary modules)
-        # this permits use of a script for an interpreter on non-Linux platforms
-        interpreter = _get_interpreter(cmd[0])
-        if interpreter:
-            cmd = interpreter + cmd
+        if is_module:
+            cmd = [sys.executable, '-m', wrapped_cmd]
+        else:
+            cmd = shlex.split(wrapped_cmd)
+            # call the module interpreter directly (for non-binary modules)
+            # this permits use of a script for an interpreter on non-Linux platforms
+            interpreter = _get_interpreter(cmd[0])
+            if interpreter:
+                cmd = interpreter + cmd
+
         script = subprocess.Popen(cmd, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE)
 
-        (outdata, stderr) = script.communicate()
+        (outdata, stderr) = script.communicate(payload)
         if PY3:
             outdata = outdata.decode('utf-8', 'surrogateescape')
             stderr = stderr.decode('utf-8', 'surrogateescape')
@@ -213,15 +219,24 @@ if __name__ == '__main__':
     time_limit = sys.argv[2]
     wrapped_module = sys.argv[3]
     argsfile = sys.argv[4]
-    if '-tmp-' not in os.path.dirname(wrapped_module):
+
+    is_module = wrapped_module.startswith('ansible.')
+
+    if not is_module and '-tmp-' not in os.path.dirname(wrapped_module):
         preserve_tmp = True
     elif len(sys.argv) > 5:
         preserve_tmp = sys.argv[5] == '-preserve_tmp'
     else:
         preserve_tmp = False
+
+    payload = None
     # consider underscore as no argsfile so we can support passing of additional positional parameters
     if argsfile != '_':
         cmd = "%s %s" % (wrapped_module, argsfile)
+    elif is_module:
+        # read here, we detach soon from stdin
+        payload = sys.stdin.read()
+        cmd = wrapped_module
     else:
         cmd = wrapped_module
     step = 5
@@ -317,7 +332,7 @@ if __name__ == '__main__':
             else:
                 # the child process runs the actual module
                 notice("Start module (%s)" % os.getpid())
-                _run_module(cmd, jid, job_path)
+                _run_module(cmd, jid, job_path, payload)
                 notice("Module complete (%s)" % os.getpid())
                 sys.exit(0)
 

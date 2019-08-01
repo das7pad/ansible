@@ -77,16 +77,16 @@ REPLACER_SELINUX = b"<<SELINUX_SPECIAL_FILESYSTEMS>>"
 
 # We could end up writing out parameters with unicode characters so we need to
 # specify an encoding for the python source file
-ENCODING_STRING = u'# -*- coding: utf-8 -*-'
 b_ENCODING_STRING = b'# -*- coding: utf-8 -*-'
 
 # module_common is relative to module_utils, so fix the path
 _MODULE_UTILS_PATH = os.path.join(os.path.dirname(__file__), '..', 'module_utils')
 
+PACKAGE_DIR = os.path.dirname(os.path.dirname(__file__))
+
 # ******************************************************************************
 
-ANSIBALLZ_TEMPLATE = u'''%(shebang)s
-%(coding)s
+ANSIBALLZ_TEMPLATE = u'''#!/usr/bin/python
 _ANSIBALLZ_WRAPPER = True # For test-module.py script to tell this is a ANSIBALLZ_WRAPPER
 # This code is part of Ansible, but is an independent component.
 # The code in this particular templatable string, and this templatable string
@@ -438,6 +438,194 @@ if C.DEFAULT_KEEP_REMOTE_FILES:
 else:
     # ANSIBALLZ_TEMPLATE stripped of comments for smaller over the wire size
     ACTIVE_ANSIBALLZ_TEMPLATE = _strip_comments(ANSIBALLZ_TEMPLATE)
+
+
+class ModuleInvocation:
+    shebang = object()
+
+    def __init__(
+        self,
+        module,
+        args,
+        async_timeout,
+        become_spec,
+        compression,
+        environment,
+        task_vars,
+        templar,
+    ):
+        self.module = module  # type: Module
+
+        self.args = args
+        self.async_timeout = async_timeout
+        self.become_spec = become_spec
+        self.compression = compression
+        self.environment = environment
+        self.task_vars = task_vars
+        self.templar = templar
+
+    def compose_payload(self):
+        b_data = _compose_payload(
+            self.module.name,
+            self.module.b_data,
+            self.module.style,
+            self.module.substyle,
+            self.args,
+            self.task_vars,
+            self.templar,
+            self.compression,
+            self.async_timeout,
+            self.become_spec['become'],
+            self.become_spec['become_method'],
+            self.become_spec['become_user'],
+            self.become_spec['become_password'],
+            self.become_spec['become_flags'],
+            self.environment,
+        )
+
+        self.determine_shebang()
+
+        if self.shebang:
+            b_lines = b_data.split(b'\n', 2)
+
+            # add the actual shebang
+            b_shebang = to_bytes(self.shebang, errors='surrogate_or_strict')
+            if b_lines[0].startswith(b'#!'):
+                b_lines[0] = b_shebang
+            else:
+                b_lines.insert(0, b_shebang)
+
+            # ensure an existing coding spec for python modules
+            if self.module.substyle == 'python' and len(b_lines) > 2:
+                if not b_lines[1].startswith(b'# -*- coding: '):
+                    b_lines[1] = b_ENCODING_STRING
+
+            b_data = b'\n'.join(b_lines)
+
+        return b_data
+
+    def determine_shebang(self):
+        if self.shebang is not ModuleInvocation.shebang:
+            # already parsed
+            return
+
+        if self.module.style == 'binary':
+            shebang = None
+        elif self.module.substyle == 'powershell':
+            shebang = u'#!powershell'
+        elif self.module.substyle == 'python':
+            shebang, _ = _get_shebang('python', self.task_vars, self.templar)
+        else:
+            first_line = self.module.b_data.split(b"\n", 1)
+            if first_line.startswith(b"#!"):
+                b_shebang = first_line.strip()
+                if b_shebang == b'#!/usr/bin/python':
+                    args = ('python',)
+                else:
+                    # shlex.split on python-2.6 needs bytes. On python-3.x it need text
+                    args = shlex.split(to_native(b_shebang[2:], errors='surrogate_or_strict'))
+
+                    # _get_shebang() takes text strings
+                    args = tuple(to_text(a, errors='surrogate_or_strict') for a in args)
+
+                interpreter = args[0]
+                shebang = _get_shebang(interpreter, self.task_vars, self.templar, args[1:])[0]
+
+            else:
+                # assume undetected binary module
+                display.vvv(
+                    'Missing shebang in module %s (%s)'
+                    % (self.module.name, self.module.path)
+                )
+                shebang = None
+
+        self.shebang = shebang
+
+
+class Module:
+    def __init__(
+        self,
+        name,
+        path,
+    ):
+        self.name = name
+        self.path = path
+
+        with open(path, 'rb') as reader:
+            b_data = reader.read()
+
+        (
+            self.style,
+            self.substyle,
+            self.b_data,
+        ) = self.parse_content(b_data)
+
+    def get_py_module_name(self):
+        if not self.is_packaged:
+            raise AnsibleError(
+                '%s (%s) is not part of ansible; you can not invoke it directly'
+                % (self.name, self.path)
+            )
+        if not self.substyle == 'python':
+            raise AnsibleError(
+                '%s (%s) is not a python module; you can not invoke it via -m'
+                % (self.name, self.path)
+            )
+
+        path_in_ansible = os.path.relpath(self.path, PACKAGE_DIR)
+        return 'ansible.' + '.'.join(path_in_ansible[:-3].split(os.path.sep))
+
+    @property
+    def is_packaged(self):
+        return self.path.startswith(PACKAGE_DIR)
+
+    @staticmethod
+    def parse_content(b_module_data):
+        module_style = module_substyle = 'old'
+
+        # module_style is something important to calling code (ActionBase).  It
+        # determines how arguments are formatted (json vs k=v) and whether
+        # a separate arguments file needs to be sent over the wire.
+        # module_substyle is extra information that's useful internally.  It
+        # tells us what we have to look to substitute in the module files and
+        # whether we're using module replacer or ansiballz to format the module
+        # itself.
+        if _is_binary(b_module_data):
+            module_substyle = module_style = 'binary'
+        elif REPLACER in b_module_data:
+            # Do REPLACER before from ansible.module_utils because we need
+            # make sure we substitute "from ansible.module_utils basic" for REPLACER
+            module_style = 'new'
+            module_substyle = 'python'
+            b_module_data = b_module_data.replace(REPLACER, b'from ansible.module_utils.basic import *')
+        # FUTURE: combined regex for this stuff, or a "looks like Python, let's inspect further" mechanism
+        elif b'from ansible.module_utils.' in b_module_data\
+                or b'from ansible_collections.' in b_module_data \
+                or b'import ansible_collections.' in b_module_data:
+            module_style = 'new'
+            module_substyle = 'python'
+        elif REPLACER_WINDOWS in b_module_data:
+            module_style = 'new'
+            module_substyle = 'powershell'
+            b_module_data = b_module_data.replace(REPLACER_WINDOWS, b'#Requires -Module Ansible.ModuleUtils.Legacy')
+        elif re.search(b'#Requires -Module', b_module_data, re.IGNORECASE) \
+                or re.search(b'#Requires -Version', b_module_data, re.IGNORECASE) \
+                or re.search(b'#AnsibleRequires -OSVersion', b_module_data, re.IGNORECASE) \
+                or re.search(b'#AnsibleRequires -Powershell', b_module_data, re.IGNORECASE) \
+                or re.search(b'#AnsibleRequires -CSharpUtil', b_module_data, re.IGNORECASE):
+            module_style = 'new'
+            module_substyle = 'powershell'
+        elif REPLACER_JSONARGS in b_module_data:
+            module_style = 'new'
+            module_substyle = 'jsonargs'
+        elif b'WANT_JSON' in b_module_data:
+            module_substyle = module_style = 'non_native_want_json'
+
+        return (
+            module_style,
+            module_substyle,
+            b_module_data,
+        )
 
 
 class ModuleDepFinder(ast.NodeVisitor):
@@ -803,55 +991,15 @@ def _is_binary(b_module_data):
     return bool(start.translate(None, textchars))
 
 
-def _find_module_utils(module_name, b_module_data, module_path, module_args, task_vars, templar, module_compression, async_timeout, become,
-                       become_method, become_user, become_password, become_flags, environment):
+def _compose_payload(module_name, b_module_data, module_style, module_substyle, module_args, task_vars, templar, module_compression, async_timeout, become,
+                     become_method, become_user, become_password, become_flags, environment):
     """
     Given the source of the module, convert it to a Jinja2 template to insert
     module code and return whether it's a new or old style module.
     """
-    module_substyle = module_style = 'old'
-
-    # module_style is something important to calling code (ActionBase).  It
-    # determines how arguments are formatted (json vs k=v) and whether
-    # a separate arguments file needs to be sent over the wire.
-    # module_substyle is extra information that's useful internally.  It tells
-    # us what we have to look to substitute in the module files and whether
-    # we're using module replacer or ansiballz to format the module itself.
-    if _is_binary(b_module_data):
-        module_substyle = module_style = 'binary'
-    elif REPLACER in b_module_data:
-        # Do REPLACER before from ansible.module_utils because we need make sure
-        # we substitute "from ansible.module_utils basic" for REPLACER
-        module_style = 'new'
-        module_substyle = 'python'
-        b_module_data = b_module_data.replace(REPLACER, b'from ansible.module_utils.basic import *')
-    # FUTURE: combined regex for this stuff, or a "looks like Python, let's inspect further" mechanism
-    elif b'from ansible.module_utils.' in b_module_data or b'from ansible_collections.' in b_module_data\
-            or b'import ansible_collections.' in b_module_data:
-        module_style = 'new'
-        module_substyle = 'python'
-    elif REPLACER_WINDOWS in b_module_data:
-        module_style = 'new'
-        module_substyle = 'powershell'
-        b_module_data = b_module_data.replace(REPLACER_WINDOWS, b'#Requires -Module Ansible.ModuleUtils.Legacy')
-    elif re.search(b'#Requires -Module', b_module_data, re.IGNORECASE) \
-            or re.search(b'#Requires -Version', b_module_data, re.IGNORECASE)\
-            or re.search(b'#AnsibleRequires -OSVersion', b_module_data, re.IGNORECASE) \
-            or re.search(b'#AnsibleRequires -Powershell', b_module_data, re.IGNORECASE) \
-            or re.search(b'#AnsibleRequires -CSharpUtil', b_module_data, re.IGNORECASE):
-        module_style = 'new'
-        module_substyle = 'powershell'
-    elif REPLACER_JSONARGS in b_module_data:
-        module_style = 'new'
-        module_substyle = 'jsonargs'
-    elif b'WANT_JSON' in b_module_data:
-        module_substyle = module_style = 'non_native_want_json'
-
-    shebang = None
-    # Neither old-style, non_native_want_json nor binary modules should be modified
-    # except for the shebang line (Done by modify_module)
+    # Neither old-style, non_native_want_json nor binary modules need be modified
     if module_style in ('old', 'non_native_want_json', 'binary'):
-        return b_module_data, module_style, shebang
+        return b_module_data
 
     output = BytesIO()
     py_module_names = set()
@@ -946,15 +1094,6 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
                                        'Look at traceback for that process for debugging information.')
         zipdata = to_text(zipdata, errors='surrogate_or_strict')
 
-        shebang, interpreter = _get_shebang(u'/usr/bin/python', task_vars, templar)
-        if shebang is None:
-            shebang = u'#!/usr/bin/python'
-
-        # Enclose the parts of the interpreter in quotes because we're
-        # substituting it into the template as a Python string
-        interpreter_parts = interpreter.split(u' ')
-        interpreter = u"'{0}'".format(u"', '".join(interpreter_parts))
-
         # FUTURE: the module cache entry should be invalidated if we got this value from a host-dependent source
         rlimit_nofile = C.config.get_config_value('PYTHON_MODULE_RLIMIT_NOFILE', variables=task_vars)
 
@@ -992,9 +1131,6 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
             zipdata=zipdata,
             ansible_module=module_name,
             params=python_repred_params,
-            shebang=shebang,
-            interpreter=interpreter,
-            coding=ENCODING_STRING,
             year=now.year,
             month=now.month,
             day=now.day,
@@ -1007,11 +1143,6 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
         b_module_data = output.getvalue()
 
     elif module_substyle == 'powershell':
-        # Powershell/winrm don't actually make use of shebang so we can
-        # safely set this here.  If we let the fallback code handle this
-        # it can fail in the presence of the UTF8 BOM commonly added by
-        # Windows text editors
-        shebang = u'#!powershell'
         # create the common exec wrapper payload and set that as the module_data
         # bytes
         b_module_data = ps_manifest._create_powershell_wrapper(
@@ -1039,7 +1170,7 @@ def _find_module_utils(module_name, b_module_data, module_path, module_args, tas
         facility = b'syslog.' + to_bytes(task_vars.get('ansible_syslog_facility', C.DEFAULT_SYSLOG_FACILITY), errors='surrogate_or_strict')
         b_module_data = b_module_data.replace(b'syslog.LOG_USER', facility)
 
-    return (b_module_data, module_style, shebang)
+    return b_module_data
 
 
 def modify_module(module_name, module_path, module_args, templar, task_vars=None, module_compression='ZIP_STORED', async_timeout=0, become=False,
@@ -1067,45 +1198,31 @@ def modify_module(module_name, module_path, module_args, templar, task_vars=None
     task_vars = {} if task_vars is None else task_vars
     environment = {} if environment is None else environment
 
-    with open(module_path, 'rb') as f:
+    module = Module(
+        name=module_name,
+        path=module_path,
+    )
+    become_spec = dict(
+        become=become,
+        become_method=become_method,
+        become_user=become_user,
+        become_password=become_password,
+        become_flags=become_flags,
+    )
+    invocation = ModuleInvocation(
+        module=module,
+        args=module_args,
+        async_timeout=async_timeout,
+        become_spec=become_spec,
+        compression=module_compression,
+        environment=environment,
+        task_vars=task_vars,
+        templar=templar,
+    )
 
-        # read in the module source
-        b_module_data = f.read()
+    invocation.determine_shebang()
 
-    (b_module_data, module_style, shebang) = _find_module_utils(module_name, b_module_data, module_path, module_args, task_vars, templar, module_compression,
-                                                                async_timeout=async_timeout, become=become, become_method=become_method,
-                                                                become_user=become_user, become_password=become_password, become_flags=become_flags,
-                                                                environment=environment)
-
-    if module_style == 'binary':
-        return (b_module_data, module_style, to_text(shebang, nonstring='passthru'))
-    elif shebang is None:
-        b_lines = b_module_data.split(b"\n", 1)
-        if b_lines[0].startswith(b"#!"):
-            b_shebang = b_lines[0].strip()
-            # shlex.split on python-2.6 needs bytes.  On python-3.x it needs text
-            args = shlex.split(to_native(b_shebang[2:], errors='surrogate_or_strict'))
-
-            # _get_shebang() takes text strings
-            args = [to_text(a, errors='surrogate_or_strict') for a in args]
-            interpreter = args[0]
-            b_new_shebang = to_bytes(_get_shebang(interpreter, task_vars, templar, args[1:])[0],
-                                     errors='surrogate_or_strict', nonstring='passthru')
-
-            if b_new_shebang:
-                b_lines[0] = b_shebang = b_new_shebang
-
-            if os.path.basename(interpreter).startswith(u'python'):
-                b_lines.insert(1, b_ENCODING_STRING)
-
-            shebang = to_text(b_shebang, nonstring='passthru', errors='surrogate_or_strict')
-        else:
-            # No shebang, assume a binary module?
-            pass
-
-        b_module_data = b"\n".join(b_lines)
-
-    return (b_module_data, module_style, shebang)
+    return (invocation.compose_payload(), module.style, invocation.shebang)
 
 
 def get_action_args_with_defaults(action, args, defaults, templar):
