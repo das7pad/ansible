@@ -826,11 +826,9 @@ class ActionBase(with_metaclass(ABCMeta, object)):
         remote_module_path = None
 
         if node_has_same_ansible and invocation.module.is_packaged and invocation.module.substyle == 'python':
-            in_data = to_bytes(json.dumps(dict(ANSIBLE_MODULE_ARGS=module_args,)), errors='surrogate_or_strict')
             module = invocation.module.get_py_module_name()
             module_already_on_remote = True
         else:
-            in_data = None
             module = None
             module_already_on_remote = False
 
@@ -844,8 +842,13 @@ class ActionBase(with_metaclass(ABCMeta, object)):
             remote_module_path = self._connection._shell.join_path(tmpdir, 'AnsiballZ_%s' % remote_module_filename)
             module = remote_module_path
 
-        # called just before creating the payload.
+        # called just before creating the payload, but after creating any temp dirs.
         self._update_module_args(module_name, module_args, task_vars)
+
+        if module_already_on_remote:
+            in_data = to_bytes(json.dumps(dict(ANSIBLE_MODULE_ARGS=module_args,)), errors='surrogate_or_strict')
+        else:
+            in_data = None
 
         args_file_path = None
         if module_style in ('old', 'non_native_want_json', 'binary'):
