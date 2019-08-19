@@ -7,6 +7,7 @@ from ansible.module_utils.docker.common import (
     compare_dict_allow_more_present,
     compare_generic,
     convert_duration_to_nanosecond,
+    is_image_name_id,
     parse_healthcheck
 )
 
@@ -516,3 +517,43 @@ def test_parse_healthcheck():
         'interval': 3662003004000
     }
     assert disabled is False
+
+def test_is_image_name_id():
+    blob64char = '0256e8a36e2070f7bf2d0b0763dbabdd67798512411de4cdcf9431a1feb60fd9'
+
+    assert is_image_name_id(
+        'sha256:' + blob64char
+    )
+    assert is_image_name_id(
+        'image@sha256:' + blob64char
+    )
+    assert is_image_name_id(
+        'repo/image@sha256:' + blob64char
+    )
+    assert is_image_name_id(
+        'localhost:5000/image@sha256:' + blob64char
+    )
+
+    # invalid char set
+    assert not is_image_name_id(
+        'sha256:thisisaninvalidsha256bodyasthecharsetisnothexadecimalKABOOOOOOOM'
+    )
+    # too short
+    assert not is_image_name_id(
+        'sha256:123abc'
+    )
+    assert not is_image_name_id(
+        'image'
+    )
+    assert not is_image_name_id(
+        'image:tag'
+    )
+    assert not is_image_name_id(
+        'repo/image'
+    )
+    assert not is_image_name_id(
+        'repo/image:tag'
+    )
+    assert not is_image_name_id(
+        'localhost:5000/image:tag'
+    )
