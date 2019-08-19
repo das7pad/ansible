@@ -2057,6 +2057,14 @@ class AnsibleModule(object):
     def fail_json(self, **kwargs):
         ''' return from the module, with an error message '''
 
+        try:
+            import raven
+        except ImportError:
+            pass
+        else:
+            if raven.base.Raven is not None:
+                raven.base.Raven.captureException()
+
         if 'msg' not in kwargs:
             raise AssertionError("implementation error -- msg to explain the error is required")
         kwargs['failed'] = True
