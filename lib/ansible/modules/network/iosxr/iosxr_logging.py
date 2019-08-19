@@ -565,9 +565,6 @@ class NCConfiguration(ConfigBase):
         prefix_ele = etree_find(running, 'host-name-prefix')
         have_prefix = prefix_ele.text if prefix_ele is not None else None
 
-        console_enable_ele = etree_find(running, 'enable-console-logging')
-        have_console_enable = console_enable_ele.text if console_enable_ele is not None else None
-
         file_params = list()
         host_params = list()
         console_params = dict()

@@ -12,7 +12,12 @@ calls the appropriate facts gathering function
 from ansible.module_utils.network.nxos.argspec.facts.facts import FactsArgs
 from ansible.module_utils.network.common.facts.facts import FactsBase
 from ansible.module_utils.network.nxos.facts.legacy.base import Default, Legacy, Hardware, Config, Interfaces, Features
+from ansible.module_utils.network.nxos.facts.interfaces.interfaces import InterfacesFacts
+from ansible.module_utils.network.nxos.facts.lacp.lacp import LacpFacts
 from ansible.module_utils.network.nxos.facts.lag_interfaces.lag_interfaces import Lag_interfacesFacts
+from ansible.module_utils.network.nxos.facts.telemetry.telemetry import TelemetryFacts
+from ansible.module_utils.network.nxos.facts.vlans.vlans import VlansFacts
+from ansible.module_utils.network.nxos.facts.lacp_interfaces.lacp_interfaces import Lacp_interfacesFacts
 
 
 FACT_LEGACY_SUBSETS = dict(
@@ -25,6 +30,11 @@ FACT_LEGACY_SUBSETS = dict(
 )
 FACT_RESOURCE_SUBSETS = dict(
     lag_interfaces=Lag_interfacesFacts,
+    telemetry=TelemetryFacts,
+    vlans=VlansFacts,
+    lacp=LacpFacts,
+    lacp_interfaces=Lacp_interfacesFacts,
+    interfaces=InterfacesFacts,
 )
 
 

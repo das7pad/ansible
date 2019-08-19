@@ -29,7 +29,7 @@ options:
   strategy:
     description:
       - This option controls how the module queres the package managers on the system.
-        C(first) means it will return only informatino for the first supported package manager available.
+        C(first) means it will return only information for the first supported package manager available.
         C(all) will return information for all supported and available package managers on the system.
     choices: ['first', 'all']
     default: 'first'
@@ -192,7 +192,7 @@ class APT(LibMgr):
 
     @property
     def pkg_cache(self):
-        if self._cache:
+        if self._cache is not None:
             return self._cache
 
         self._cache = self._lib.Cache()
@@ -209,7 +209,9 @@ class APT(LibMgr):
         return we_have_lib
 
     def list_installed(self):
-        return [pk for pk in self.pkg_cache.keys() if self.pkg_cache[pk].is_installed]
+        # Store the cache to avoid running pkg_cache() for each item in the comprehension, which is very slow
+        cache = self.pkg_cache
+        return [pk for pk in cache.keys() if cache[pk].is_installed]
 
     def get_package_details(self, package):
         ac_pkg = self.pkg_cache[package].installed

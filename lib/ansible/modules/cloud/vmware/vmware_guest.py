@@ -785,12 +785,10 @@ class PyVmomiCache(object):
             if hasattr(objects, 'items'):
                 # resource pools come back as a dictionary
                 # make a copy
-                tmpobjs = objects.copy()
-                for k, v in objects.items():
+                for k, v in tuple(objects.items()):
                     parent_dc = self.get_parent_datacenter(k)
                     if parent_dc.name != self.dc_name:
-                        tmpobjs.pop(k, None)
-                objects = tmpobjs
+                        del objects[k]
             else:
                 # everything else should be a list
                 objects = [x for x in objects if self.get_parent_datacenter(x).name == self.dc_name]
@@ -1347,6 +1345,13 @@ class PyVmomiHelper(PyVmomi):
                 else:
                     pg_obj = self.cache.find_obj(self.content, [vim.dvs.DistributedVirtualPortgroup], network_name)
 
+                # TODO: (akasurde) There is no way to find association between resource pool and distributed virtual portgroup
+                # For now, check if we are able to find distributed virtual switch
+                if not pg_obj.config.distributedVirtualSwitch:
+                    self.module.fail_json(msg="Failed to find distributed virtual switch which is associated with"
+                                              " distributed virtual portgroup '%s'. Make sure hostsystem is associated with"
+                                              " the given distributed virtual portgroup. Also, check if user has correct"
+                                              " permission to access distributed virtual switch in the given portgroup." % pg_obj.name)
                 if (nic.device.backing and
                     (not hasattr(nic.device.backing, 'port') or
                      (nic.device.backing.port.portgroupKey != pg_obj.key or
@@ -1363,12 +1368,6 @@ class PyVmomiHelper(PyVmomi):
                     self.module.fail_json(msg="It seems that host system '%s' is not associated with distributed"
                                               " virtual portgroup '%s'. Please make sure host system is associated"
                                               " with given distributed virtual portgroup" % (host_system, pg_obj.name))
-                # TODO: (akasurde) There is no way to find association between resource pool and distributed virtual portgroup
-                # For now, check if we are able to find distributed virtual switch
-                if not pg_obj.config.distributedVirtualSwitch:
-                    self.module.fail_json(msg="Failed to find distributed virtual switch which is associated with"
-                                              " distributed virtual portgroup '%s'. Make sure hostsystem is associated with"
-                                              " the given distributed virtual portgroup." % pg_obj.name)
                 dvs_port_connection.switchUuid = pg_obj.config.distributedVirtualSwitch.uuid
                 nic.device.backing = vim.vm.device.VirtualEthernetCard.DistributedVirtualPortBackingInfo()
                 nic.device.backing.port = dvs_port_connection
@@ -1892,6 +1891,9 @@ class PyVmomiHelper(PyVmomi):
 
         datastore_freespace = 0
         for ds in datastores:
+            if not self.is_datastore_valid(datastore_obj=ds):
+                continue
+
             if ds.summary.freeSpace > datastore_freespace:
                 datastore = ds
                 datastore_freespace = ds.summary.freeSpace
@@ -1931,6 +1933,9 @@ class PyVmomiHelper(PyVmomi):
         for ds in datastore_cluster_obj.childEntity:
             if isinstance(ds, vim.Datastore) and ds.summary.freeSpace > datastore_freespace:
                 # If datastore field is provided, filter destination datastores
+                if not self.is_datastore_valid(datastore_obj=ds):
+                    continue
+
                 datastore = ds
                 datastore_freespace = ds.summary.freeSpace
         if datastore:
@@ -1951,6 +1956,9 @@ class PyVmomiHelper(PyVmomi):
 
                 datastore_freespace = 0
                 for ds in datastores:
+                    if not self.is_datastore_valid(datastore_obj=ds):
+                        continue
+
                     if (ds.summary.freeSpace > datastore_freespace) or (ds.summary.freeSpace == datastore_freespace and not datastore):
                         # If datastore field is provided, filter destination datastores
                         if 'datastore' in self.params['disk'][0] and \

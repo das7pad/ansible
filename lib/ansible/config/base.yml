@@ -956,12 +956,14 @@ DEFAULT_SCP_IF_SSH:
   - {key: scp_if_ssh, section: ssh_connection}
 DEFAULT_SELINUX_SPECIAL_FS:
   name: Problematic file systems
-  default: fuse, nfs, vboxsf, ramfs, 9p
+  default: fuse, nfs, vboxsf, ramfs, 9p, vfat
   description:
     - "Some filesystems do not support safe operations and/or return inconsistent errors,
        this setting makes Ansible 'tolerate' those in the list w/o causing fatal errors."
     - Data corruption may occur and writes are not always verified when a filesystem is in the list.
-  env: []
+  env:
+  - name: ANSIBLE_SELINUX_SPECIAL_FS
+    version_added: "2.9"
   ini:
   - {key: special_context_filesystems, section: selinux}
   type: list
@@ -1349,6 +1351,13 @@ GALAXY_TOKEN:
   ini:
   - {key: token, section: galaxy}
   yaml: {key: galaxy.token}
+GALAXY_TOKEN_PATH:
+  default: ~/.ansible/galaxy_token
+  description: "Local path to galaxy access token file"
+  env: [{name: ANSIBLE_GALAXY_TOKEN_PATH}]
+  ini:
+  - {key: token_path, section: galaxy}
+  type: path
 HOST_KEY_CHECKING:
   name: Check host keys
   default: True
@@ -1421,13 +1430,14 @@ TRANSFORM_INVALID_GROUP_CHARS:
   description:
     - Make ansible transform invalid characters in group names supplied by inventory sources.
     - If 'never' it will allow for the group name but warn about the issue.
+    - When 'ignore', it does the same as 'never', without issuing a warning.
     - When 'always' it will replace any invalid charachters with '_' (underscore) and warn the user
-    - When 'silently', it does the same as 'always' sans the warnings.
+    - When 'silently', it does the same as 'always', without issuing a warning.
   env: [{name: ANSIBLE_TRANSFORM_INVALID_GROUP_CHARS}]
   ini:
   - {key: force_valid_group_names, section: defaults}
   type: string
-  choices: ['always', 'never', 'silently']
+  choices: ['always', 'never', 'ignore', 'silently']
   version_added: '2.8'
 INVALID_TASK_ATTRIBUTE_FAILED:
   name: Controls whether invalid attributes for a task result in errors instead of warnings

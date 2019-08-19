@@ -375,7 +375,7 @@ class PluginLoader:
 
         return to_text(found_files[0])
 
-    def _find_plugin(self, name, mod_type='', ignore_deprecated=False, check_aliases=False, collection_list=None):
+    def find_plugin(self, name, mod_type='', ignore_deprecated=False, check_aliases=False, collection_list=None):
         ''' Find a plugin named name '''
 
         global _PLUGIN_FILTERS
@@ -497,20 +497,6 @@ class PluginLoader:
                 return pull_cache[alias_name]
 
         return None
-
-    def find_plugin(self, name, mod_type='', ignore_deprecated=False, check_aliases=False, collection_list=None):
-        ''' Find a plugin named name '''
-
-        # Import here to avoid circular import
-        from ansible.vars.reserved import is_reserved_name
-
-        plugin = self._find_plugin(name, mod_type=mod_type, ignore_deprecated=ignore_deprecated, check_aliases=check_aliases, collection_list=collection_list)
-        if plugin and self.package == 'ansible.modules' and name not in ('gather_facts',) and is_reserved_name(name):
-            raise AnsibleError(
-                'Module "%s" shadows the name of a reserved keyword. Please rename or remove this module. Found at %s' % (name, plugin)
-            )
-
-        return plugin
 
     def has_plugin(self, name, collection_list=None):
         ''' Checks if a plugin named name exists '''
@@ -678,7 +664,13 @@ class PluginLoader:
 
             if path not in self._module_cache:
                 try:
-                    module = self._load_module_source(name, path)
+                    if self.subdir in ('filter_plugins', 'test_plugins'):
+                        # filter and test plugin files can contain multiple plugins
+                        # they must have a unique python module name to prevent them from shadowing each other
+                        full_name = '{0}_{1}'.format(abs(hash(path)), basename)
+                    else:
+                        full_name = basename
+                    module = self._load_module_source(full_name, path)
                     self._load_config_defs(basename, module, path)
                 except Exception as e:
                     display.warning("Skipping plugin (%s) as it seems to be invalid: %s" % (path, to_text(e)))
@@ -826,7 +818,7 @@ def _load_plugin_filter():
 
 def _configure_collection_loader():
     if not any((isinstance(l, AnsibleCollectionLoader) for l in sys.meta_path)):
-        sys.meta_path.insert(0, AnsibleCollectionLoader())
+        sys.meta_path.insert(0, AnsibleCollectionLoader(C.config))
 
 
 # TODO: All of the following is initialization code   It should be moved inside of an initialization

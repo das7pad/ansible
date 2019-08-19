@@ -26,6 +26,7 @@ from ansible.errors import AnsibleError
 from ansible.galaxy import get_collections_galaxy_meta_info
 from ansible.module_utils._text import to_bytes, to_native, to_text
 from ansible.module_utils import six
+from ansible.utils.collection_loader import is_collection_ref
 from ansible.utils.display import Display
 from ansible.utils.hashing import secure_hash, secure_hash_s
 from ansible.module_utils.urls import open_url
@@ -39,7 +40,6 @@ display = Display()
 MANIFEST_FORMAT = 1
 
 
-@six.python_2_unicode_compatible
 class CollectionRequirement:
 
     _FILE_MAPPING = [(b'MANIFEST.json', 'manifest_file'), (b'FILES.json', 'files_file')]
@@ -82,7 +82,10 @@ class CollectionRequirement:
         self.add_requirement(parent, requirement)
 
     def __str__(self):
-        return to_text("%s.%s" % (self.namespace, self.name))
+        return to_native("%s.%s" % (self.namespace, self.name))
+
+    def __unicode__(self):
+        return u"%s.%s" % (self.namespace, self.name)
 
     @property
     def latest_version(self):
@@ -109,16 +112,17 @@ class CollectionRequirement:
                 force_flag = '--force-with-deps' if parent else '--force'
                 version = self.latest_version if self.latest_version != '*' else 'unknown'
                 msg = "Cannot meet requirement %s:%s as it is already installed at version '%s'. Use %s to overwrite" \
-                      % (str(self), requirement, version, force_flag)
+                      % (to_text(self), requirement, version, force_flag)
                 raise AnsibleError(msg)
             elif parent is None:
-                msg = "Cannot meet requirement %s for dependency %s" % (requirement, str(self))
+                msg = "Cannot meet requirement %s for dependency %s" % (requirement, to_text(self))
             else:
-                msg = "Cannot meet dependency requirement '%s:%s' for collection %s" % (str(self), requirement, parent)
+                msg = "Cannot meet dependency requirement '%s:%s' for collection %s" \
+                      % (to_text(self), requirement, parent)
 
             collection_source = to_text(self.b_path, nonstring='passthru') or self.source
             req_by = "\n".join(
-                "\t%s - '%s:%s'" % (to_text(p) if p else 'base', str(self), r)
+                "\t%s - '%s:%s'" % (to_text(p) if p else 'base', to_text(self), r)
                 for p, r in self.required_by
             )
 
@@ -132,14 +136,13 @@ class CollectionRequirement:
 
     def install(self, path, b_temp_path):
         if self.skip:
-            display.display("Skipping '%s' as it is already installed" % str(self))
+            display.display("Skipping '%s' as it is already installed" % to_text(self))
             return
 
         # Install if it is not
         collection_path = os.path.join(path, self.namespace, self.name)
         b_collection_path = to_bytes(collection_path, errors='surrogate_or_strict')
-        display.display("Installing '%s:%s' to '%s'" % (str(self), self.latest_version,
-                                                        collection_path))
+        display.display("Installing '%s:%s' to '%s'" % (to_text(self), self.latest_version, collection_path))
 
         if self.b_path is None:
             download_url = self._galaxy_info['download_url']
@@ -455,7 +458,7 @@ def install_collections(collections, output_path, servers, validate_certs, ignor
             except AnsibleError as err:
                 if ignore_errors:
                     display.warning("Failed to install collection %s but skipping due to --ignore-errors being set. "
-                                    "Error: %s" % (str(collection), to_text(err)))
+                                    "Error: %s" % (to_text(collection), to_text(err)))
                 else:
                     raise
 
@@ -508,6 +511,20 @@ def parse_collections_requirements_file(requirements_file):
             collection_info.append((collection_req, '*', None))
 
     return collection_info
+
+
+def validate_collection_name(name):
+    """
+    Validates the collection name as an input from the user or a requirements file fit the requirements.
+
+    :param name: The input name with optional range specifier split by ':'.
+    :return: The input value, required for argparse validation.
+    """
+    collection, dummy, dummy = name.partition(':')
+    if is_collection_ref('ansible_collections.{0}'.format(collection)):
+        return name
+
+    raise AnsibleError("Invalid collection name '%s', name must be in the format <namespace>.<collection>." % name)
 
 
 @contextmanager
@@ -814,7 +831,7 @@ def _find_existing_collections(path):
             b_collection_path = os.path.join(b_namespace_path, b_collection)
             if os.path.isdir(b_collection_path):
                 req = CollectionRequirement.from_path(b_collection_path, True, False)
-                display.vvv("Found installed collection %s:%s at '%s'" % (str(req), req.latest_version,
+                display.vvv("Found installed collection %s:%s at '%s'" % (to_text(req), req.latest_version,
                                                                           to_text(b_collection_path)))
                 collections.append(req)
 
@@ -830,7 +847,7 @@ def _build_dependency_map(collections, existing_collections, b_temp_path, server
         _get_collection_info(dependency_map, existing_collections, name, version, source, b_temp_path, servers,
                              validate_certs, (force or force_deps))
 
-    checked_parents = set([str(c) for c in dependency_map.values() if c.skip])
+    checked_parents = set([to_text(c) for c in dependency_map.values() if c.skip])
     while len(dependency_map) != len(checked_parents):
         while not no_deps:  # Only parse dependencies if no_deps was not set
             parents_to_check = set(dependency_map.keys()).difference(checked_parents)
@@ -881,13 +898,15 @@ def _get_collection_info(dep_map, existing_collections, collection, requirement,
     if b_tar_path:
         req = CollectionRequirement.from_tar(b_tar_path, validate_certs, force, parent=parent)
 
-        collection_name = str(req)
+        collection_name = to_text(req)
         if collection_name in dep_map:
             collection_info = dep_map[collection_name]
             collection_info.add_requirement(None, req.latest_version)
         else:
             collection_info = req
     else:
+        validate_collection_name(collection)
+
         display.vvvv("Collection requirement '%s' is the name of a collection" % collection)
         if collection in dep_map:
             collection_info = dep_map[collection]
@@ -897,13 +916,13 @@ def _get_collection_info(dep_map, existing_collections, collection, requirement,
             collection_info = CollectionRequirement.from_name(collection, servers, requirement, validate_certs, force,
                                                               parent=parent)
 
-    existing = [c for c in existing_collections if str(c) == str(collection_info)]
+    existing = [c for c in existing_collections if to_text(c) == to_text(collection_info)]
     if existing and not collection_info.force:
         # Test that the installed collection fits the requirement
-        existing[0].add_requirement(str(collection_info), requirement)
+        existing[0].add_requirement(to_text(collection_info), requirement)
         collection_info = existing[0]
 
-    dep_map[str(collection_info)] = collection_info
+    dep_map[to_text(collection_info)] = collection_info
 
 
 def _urljoin(*args):

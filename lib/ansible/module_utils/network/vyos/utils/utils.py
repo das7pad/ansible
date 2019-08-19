@@ -4,8 +4,6 @@
 # (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 # utils
-
-
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
@@ -53,3 +51,69 @@ def dict_delete(base, comparable):
                 to_delete[key] = base[key]
 
     return to_delete
+
+
+def diff_list_of_dicts(want, have):
+    diff = []
+
+    set_w = set(tuple(d.items()) for d in want)
+    set_h = set(tuple(d.items()) for d in have)
+    difference = set_w.difference(set_h)
+
+    for element in difference:
+        diff.append(dict((x, y) for x, y in element))
+
+    return diff
+
+
+def get_lst_diff_for_dicts(want, have, lst):
+    """
+    This function generates a list containing values
+    that are only in want and not in list in have dict
+    :param want: dict object to want
+    :param have: dict object to have
+    :param lst: list the diff on
+    :return: new list object with values which are only in want.
+    """
+    if not have:
+        diff = want.get(lst) or []
+
+    else:
+        want_elements = want.get(lst) or {}
+        have_elements = have.get(lst) or {}
+        diff = list_diff_want_only(want_elements, have_elements)
+    return diff
+
+
+def list_diff_have_only(want_list, have_list):
+    """
+    This function generated the list containing values
+    that are only in have list.
+    :param want_list:
+    :param have_list:
+    :return: new list with values which are only in have list
+    """
+    if have_list and not want_list:
+        diff = have_list
+    elif not have_list:
+        diff = None
+    else:
+        diff = [i for i in have_list + want_list if i in have_list and i not in want_list]
+    return diff
+
+
+def list_diff_want_only(want_list, have_list):
+    """
+    This function generated the list containing values
+    that are only in want list.
+    :param want_list:
+    :param have_list:
+    :return: new list with values which are only in want list
+    """
+    if have_list and not want_list:
+        diff = None
+    elif not have_list:
+        diff = want_list
+    else:
+        diff = [i for i in have_list + want_list if i in want_list and i not in have_list]
+    return diff

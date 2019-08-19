@@ -6,9 +6,15 @@
 """
 The arg spec for the nxos facts module.
 """
+
 CHOICES = [
     'all',
     'lag_interfaces',
+    'telemetry',
+    'vlans',
+    'lacp',
+    'lacp_interfaces',
+    'interfaces',
 ]
 
 

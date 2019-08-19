@@ -600,7 +600,7 @@ def find_running_instances_by_count_tag(module, ec2, vpc, count_tag, zone=None):
     for res in reservations:
         if hasattr(res, 'instances'):
             for inst in res.instances:
-                if inst.state == 'terminated':
+                if inst.state == 'terminated' or inst.state == 'shutting-down':
                     continue
                 instances.append(inst)
 
@@ -800,8 +800,6 @@ def create_block_device(module, ec2, volume):
             size = volume.get('volume_size', snapshot.volume_size)
             if int(volume['iops']) > MAX_IOPS_TO_SIZE_RATIO * size:
                 module.fail_json(msg='IOPS must be at most %d times greater than size' % MAX_IOPS_TO_SIZE_RATIO)
-        if 'encrypted' in volume:
-            module.fail_json(msg='You can not set encryption when creating a volume from a snapshot')
     if 'ephemeral' in volume:
         if 'snapshot' in volume:
             module.fail_json(msg='Cannot set both ephemeral and snapshot')
