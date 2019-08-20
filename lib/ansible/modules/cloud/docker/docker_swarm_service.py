@@ -1061,6 +1061,7 @@ from ansible.module_utils.docker.common import (
     DockerBaseClass,
     convert_duration_to_nanosecond,
     parse_healthcheck,
+    parse_repository_tag,
     clean_dict_booleans_for_docker_api,
     RequestException,
 )
@@ -1072,7 +1073,6 @@ from ansible.module_utils._text import to_text
 try:
     from docker import types
     from docker.utils import (
-        parse_repository_tag,
         parse_env_file,
         format_environment,
     )
@@ -2390,10 +2390,11 @@ class DockerServiceManager(object):
             or not resolve
         ):
             return name
-        repo, tag = parse_repository_tag(name)
-        if not tag:
-            tag = 'latest'
-        name = repo + ':' + tag
+        repo, tag = parse_repository_tag(name, fallback_tag='latest')
+        if tag:
+            name = repo + ':' + tag
+        else:
+            name = repo
         distribution_data = self.client.inspect_distribution(name)
         digest = distribution_data['Descriptor']['digest']
         return '%s@%s' % (name, digest)

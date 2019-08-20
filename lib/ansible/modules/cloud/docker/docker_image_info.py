@@ -179,6 +179,7 @@ from ansible.module_utils.docker.common import (
     AnsibleDockerClient,
     DockerBaseClass,
     is_image_name_id,
+    parse_repository_tag,
     RequestException,
 )
 
@@ -220,9 +221,7 @@ class ImageManager(DockerBaseClass):
                 self.log('Fetching image %s (ID)' % (name))
                 image = self.client.find_image_by_id(name)
             else:
-                repository, tag = utils.parse_repository_tag(name)
-                if not tag:
-                    tag = 'latest'
+                repository, tag = parse_repository_tag(name, fallback_tag='latest')
                 self.log('Fetching image %s:%s' % (repository, tag))
                 image = self.client.find_image(name=repository, tag=tag)
             if image:

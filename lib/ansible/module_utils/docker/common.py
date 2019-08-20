@@ -156,6 +156,15 @@ def is_valid_tag(tag, allow_empty=False):
     return bool(re.match('^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$', tag))
 
 
+def parse_repository_tag(repo_name, fallback_tag=None):
+    if is_image_name_id(repo_name):
+        return repo_name, None
+    parts = repo_name.rsplit(':', 1)
+    if len(parts) == 2 and '/' not in parts[1]:
+        return tuple(parts)
+    return repo_name, fallback_tag
+
+
 def sanitize_result(data):
     """Sanitize data object for return to Ansible.
 

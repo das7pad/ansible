@@ -438,6 +438,7 @@ from ansible.module_utils.docker.common import (
     DockerBaseClass,
     is_image_name_id,
     is_valid_tag,
+    parse_repository_tag,
     RequestException,
 )
 from ansible.module_utils._text import to_native
@@ -448,7 +449,6 @@ if docker_version is not None:
             from docker.auth import resolve_repository_name
         else:
             from docker.auth.auth import resolve_repository_name
-        from docker.utils.utils import parse_repository_tag
         from docker.errors import DockerException
     except ImportError:
         # missing Docker SDK for Python handled in module_utils.docker.common
@@ -493,11 +493,10 @@ class ImageManager(DockerBaseClass):
         self.use_config_proxy = build.get('use_config_proxy')
 
         # If name contains a tag, it takes precedence over tag parameter.
-        if not is_image_name_id(self.name):
-            repo, repo_tag = parse_repository_tag(self.name)
-            if repo_tag:
-                self.name = repo
-                self.tag = repo_tag
+        repo, repo_tag = parse_repository_tag(self.name)
+        if repo_tag:
+            self.name = repo
+            self.tag = repo_tag
 
         if self.state == 'present':
             self.present()
@@ -684,11 +683,8 @@ class ImageManager(DockerBaseClass):
         :param push: bool. push the image once it's tagged.
         :return: None
         '''
-        repo, repo_tag = parse_repository_tag(repository)
-        if not repo_tag:
-            repo_tag = "latest"
-            if tag:
-                repo_tag = tag
+        repo, repo_tag = parse_repository_tag(repository, fallback_tag=(tag or 'latest'))
+
         image = self.client.find_image(name=repo, tag=repo_tag)
         found = 'found' if image else 'not found'
         self.log("image %s was %s" % (repo, found))
