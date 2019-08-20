@@ -690,12 +690,13 @@ class ImageManager(DockerBaseClass):
             self.results['changed'] = True
             self.results['actions'].append("Tagged image %s:%s to %s:%s" % (name, tag, repo, repo_tag))
             if not self.check_mode:
+                image_name, tag = parse_repository_tag(name, fallback_tag=(tag or 'latest'))
+                if tag:
+                    image_name = "%s:%s" % (image_name, tag)
+
                 try:
                     # Finding the image does not always work, especially running a localhost registry. In those
                     # cases, if we don't set force=True, it errors.
-                    image_name = name
-                    if tag and not re.search(tag, name):
-                        image_name = "%s:%s" % (name, tag)
                     tag_status = self.client.tag(image_name, repo, tag=repo_tag, force=True)
                     if not tag_status:
                         raise Exception("Tag operation failed.")
