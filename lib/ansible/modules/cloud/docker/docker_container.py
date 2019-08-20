@@ -1036,6 +1036,7 @@ from ansible.module_utils.docker.common import (
     clean_dict_booleans_for_docker_api,
     omit_none_from_dict,
     parse_healthcheck,
+    parse_repository_tag,
     DOCKER_COMMON_ARGS,
     RequestException,
 )
@@ -2617,9 +2618,7 @@ class ContainerManager(DockerBaseClass):
         if is_image_name_id(self.parameters.image):
             image = self.client.find_image_by_id(self.parameters.image)
         else:
-            repository, tag = utils.parse_repository_tag(self.parameters.image)
-            if not tag:
-                tag = "latest"
+            repository, tag = parse_repository_tag(self.parameters.image, fallback_tag='latest')
             image = self.client.find_image(repository, tag)
             if not self.check_mode:
                 if not image or self.parameters.pull:
