@@ -599,7 +599,9 @@ class ImageManager(DockerBaseClass):
             self.log("archive image: image %s:%s not found" % (name, tag))
             return
 
-        image_name = "%s:%s" % (name, tag)
+        image_name, tag = parse_repository_tag(name, fallback_tag=tag)
+        if tag:
+            image_name = "%s:%s" % (name, tag)
         self.results['actions'].append('Archived image %s to %s' % (image_name, self.archive_path))
         self.results['changed'] = True
         if not self.check_mode:
