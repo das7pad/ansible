@@ -617,8 +617,16 @@ class AnsibleDockerClient(Client):
         if not name:
             return None
 
-        self.log("Find image %s:%s" % (name, tag))
-        images = self._image_lookup(name, tag)
+        if is_image_name_id(name):
+            self.log("Find image %s (by ID)" % name)
+            try:
+                return self.inspect_image(name)
+            except Exception:
+                images = []
+        else:
+            self.log("Find image %s:%s" % (name, tag))
+            images = self._image_lookup(name, tag)
+
         if not images:
             # In API <= 1.20 seeing 'docker.io/<name>' as the name of images pulled from docker hub
             registry, repo_name = auth.resolve_repository_name(name)

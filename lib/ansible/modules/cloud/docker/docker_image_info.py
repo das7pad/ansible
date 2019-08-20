@@ -178,7 +178,6 @@ except ImportError:
 from ansible.module_utils.docker.common import (
     AnsibleDockerClient,
     DockerBaseClass,
-    is_image_name_id,
     parse_repository_tag,
     RequestException,
 )
@@ -217,13 +216,8 @@ class ImageManager(DockerBaseClass):
             names = [names]
 
         for name in names:
-            if is_image_name_id(name):
-                self.log('Fetching image %s (ID)' % (name))
-                image = self.client.find_image_by_id(name)
-            else:
-                repository, tag = parse_repository_tag(name, fallback_tag='latest')
-                self.log('Fetching image %s:%s' % (repository, tag))
-                image = self.client.find_image(name=repository, tag=tag)
+            repository, tag = parse_repository_tag(name, fallback_tag='latest')
+            image = self.client.find_image(name=repository, tag=tag)
             if image:
                 results.append(image)
         return results

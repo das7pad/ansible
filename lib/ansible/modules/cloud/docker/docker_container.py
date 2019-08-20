@@ -1031,7 +1031,6 @@ from ansible.module_utils.docker.common import (
     DifferenceTracker,
     DockerBaseClass,
     compare_generic,
-    is_image_name_id,
     sanitize_result,
     clean_dict_booleans_for_docker_api,
     omit_none_from_dict,
@@ -2615,20 +2614,17 @@ class ContainerManager(DockerBaseClass):
         if not self.parameters.image:
             self.log('No image specified')
             return None
-        if is_image_name_id(self.parameters.image):
-            image = self.client.find_image_by_id(self.parameters.image)
-        else:
-            repository, tag = parse_repository_tag(self.parameters.image, fallback_tag='latest')
-            image = self.client.find_image(repository, tag)
-            if not self.check_mode:
-                if not image or self.parameters.pull:
-                    self.log("Pull the image.")
-                    image, alreadyToLatest = self.client.pull_image(repository, tag)
-                    if alreadyToLatest:
-                        self.results['changed'] = False
-                    else:
-                        self.results['changed'] = True
-                        self.results['actions'].append(dict(pulled_image="%s:%s" % (repository, tag)))
+        repository, tag = parse_repository_tag(self.parameters.image, fallback_tag='latest')
+        image = self.client.find_image(repository, tag)
+        if not self.check_mode:
+            if not image or self.parameters.pull:
+                self.log("Pull the image.")
+                image, alreadyToLatest = self.client.pull_image(repository, tag)
+                if alreadyToLatest:
+                    self.results['changed'] = False
+                else:
+                    self.results['changed'] = True
+                    self.results['actions'].append(dict(pulled_image="%s:%s" % (repository, tag)))
         self.log("image")
         self.log(image, pretty_print=True)
         return image
