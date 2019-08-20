@@ -436,7 +436,6 @@ from ansible.module_utils.docker.common import (
     docker_version,
     AnsibleDockerClient,
     DockerBaseClass,
-    is_image_name_id,
     is_valid_tag,
     parse_repository_tag,
     RequestException,
@@ -570,12 +569,9 @@ class ImageManager(DockerBaseClass):
         :return None
         '''
         name = self.name
-        if is_image_name_id(name):
-            image = self.client.find_image_by_id(name)
-        else:
-            image = self.client.find_image(name, self.tag)
-            if self.tag:
-                name = "%s:%s" % (self.name, self.tag)
+        image = self.client.find_image(name, self.tag)
+        if self.tag:
+            name = "%s:%s" % (self.name, self.tag)
         if image:
             if not self.check_mode:
                 try:
