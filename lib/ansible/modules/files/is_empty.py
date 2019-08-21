@@ -20,6 +20,12 @@ options:
       - The full path of the directory to get the facts of.
     type: path
     required: true
+  ignore_missing:
+    description:
+      - Flag missing directories as empty
+      - Set to C(false) to raise an error
+    type: bool
+    default: true
 seealso:
 - module: find
 author: Jakob Ackermann (@das7pad)
@@ -43,6 +49,7 @@ is_empty:
     sample: True
 '''
 
+import errno
 import os
 
 from ansible.module_utils._text import to_bytes
@@ -53,6 +60,7 @@ def main():
     module = AnsibleModule(
         argument_spec=dict(
             path=dict(type='path', required=True),
+            ignore_missing=dict(type='bool', default=True),
         ),
         supports_check_mode=True,
     )
@@ -61,6 +69,9 @@ def main():
     b_path = to_bytes(path, errors='surrogate_or_strict')
 
     def handler(err):
+        if err.errno == errno.ENOENT and module.params.get('ignore_missing'):
+            module.exit_json(changed=False, is_empty=True)
+
         module.fail_json(msg=err.strerror)
 
     items = tuple(os.walk(b_path, onerror=handler))
