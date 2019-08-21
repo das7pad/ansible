@@ -4,6 +4,7 @@ __metaclass__ = type
 
 import atexit
 import os
+import stat
 import tarfile
 import tempfile
 import time
@@ -17,7 +18,6 @@ from .config import (
 
 from .util import (
     display,
-    ANSIBLE_ROOT,
     ANSIBLE_SOURCE_ROOT,
     remove_tree,
     is_subdir,
@@ -58,10 +58,17 @@ def create_payload(args, dst_path):  # type: (CommonConfig, str) -> None
         return
 
     files = list(data_context().ansible_source)
+    filters = {}
+
+    def make_executable(tar_info):  # type: (tarfile.TarInfo) -> t.Optional[tarfile.TarInfo]
+        """Make the given file executable."""
+        tar_info.mode |= stat.S_IXUSR | stat.S_IXOTH | stat.S_IXGRP
+        return tar_info
 
     if not ANSIBLE_SOURCE_ROOT:
         # reconstruct the bin directory which is not available when running from an ansible install
         files.extend(create_temporary_bin_files(args))
+        filters.update(dict((path[3:], make_executable) for path in ANSIBLE_BIN_SYMLINK_MAP.values() if path.startswith('../')))
 
     if not data_context().content.is_ansible:
         # exclude unnecessary files when not testing ansible itself
@@ -79,19 +86,11 @@ def create_payload(args, dst_path):  # type: (CommonConfig, str) -> None
             files.extend((os.path.join(data_context().content.root, path), os.path.join(data_context().content.collection.directory, path))
                          for path in data_context().content.all_files())
 
-    # these files need to be migrated to the ansible-test data directory
-    hack_files_to_keep = (
-        'test/integration/inventory',
-    )
-
-    # temporary solution to include files not yet present in the ansible-test data directory
-    files.extend([(os.path.join(ANSIBLE_ROOT, path), path) for path in hack_files_to_keep])
-
     for callback in data_context().payload_callbacks:
         callback(files)
 
     # maintain predictable file order
-    files = sorted(files)
+    files = sorted(set(files))
 
     display.info('Creating a payload archive containing %d files...' % len(files), verbosity=1)
 
@@ -100,7 +99,7 @@ def create_payload(args, dst_path):  # type: (CommonConfig, str) -> None
     with tarfile.TarFile.gzopen(dst_path, mode='w', compresslevel=4) as tar:
         for src, dst in files:
             display.info('%s -> %s' % (src, dst), verbosity=4)
-            tar.add(src, dst)
+            tar.add(src, dst, filter=filters.get(dst))
 
     duration = time.time() - start
     payload_size_bytes = os.path.getsize(dst_path)

@@ -25,7 +25,7 @@ Playbook
 Command Line
 ============
 
-No notable changes
+* The location of the Galaxy token file has changed from ``~/.ansible_galaxy`` to ``~/.ansible/galaxy_token``. You can configure both path and file name with the :ref:`galaxy_token_path` config.
 
 
 Deprecated
@@ -80,6 +80,8 @@ The following modules will be removed in Ansible 2.13. Please update update your
 
 * lambda_facts use :ref:`lambda_info <lambda_info_module>` instead.
 
+* nginx_status_facts use :ref:`nginx_status_info <nginx_status_info_module>` instead.
+
 * nxos_interface use :ref:`nxos_interfaces <nxos_interfaces_module>` instead.
 
 * nxos_linkagg use :ref:`nxos_lag_interfaces <nxos_lag_interfaces_module>` instead.
@@ -97,6 +99,8 @@ The following modules will be removed in Ansible 2.13. Please update update your
 * vyos_linkagg use :ref:`vyos_lag_interfaces <vyos_lag_interfaces_module>` instead.
 
 * vyos_lldp use :ref:`vyos_lldp_global <vyos_lldp_global_module>` instead.
+
+* vyos_lldp_interface use :ref:`vyos_lldp_interfaces <vyos_lldp_interfaces_module>` instead.
 
 The following functionality will be removed in Ansible 2.12. Please update update your playbooks accordingly.
 
@@ -239,6 +243,36 @@ be removed in Ansible 2.13. Please update update your playbooks accordingly.
 * The ``gcp_tpu_node_facts`` module was renamed to :ref:`gcp_tpu_node_info <gcp_tpu_node_info_module>`.
 * The ``gcpubsub_facts`` module was renamed to :ref:`gcpubsub_info <gcpubsub_info_module>`.
 * The ``github_webhook_facts`` module was renamed to :ref:`github_webhook_info <github_webhook_info_module>`.
+* The ``gluster_heal_facts`` module was renamed to :ref:`gluster_heal_info <gluster_heal_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hcloud_datacenter_facts`` module was renamed to :ref:`hcloud_datacenter_info <hcloud_datacenter_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hcloud_floating_ip_facts`` module was renamed to :ref:`hcloud_floating_ip_info <hcloud_floating_ip_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hcloud_image_facts`` module was renamed to :ref:`hcloud_image_info <hcloud_image_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hcloud_location_facts`` module was renamed to :ref:`hcloud_location_info <hcloud_location_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hcloud_server_facts`` module was renamed to :ref:`hcloud_server_info <hcloud_server_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hcloud_server_type_facts`` module was renamed to :ref:`hcloud_server_type_info <hcloud_server_type_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hcloud_ssh_key_facts`` module was renamed to :ref:`hcloud_ssh_key_info <hcloud_ssh_key_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hcloud_volume_facts`` module was renamed to :ref:`hcloud_volume_info <hcloud_volume_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
+* The ``hpilo_facts`` module was renamed to :ref:`hpilo_info <hpilo_info_module>`.
+  When called with the new name, the module no longer returns ``ansible_facts``.
+  To access return values, :ref:`register a variable <registered_variables>`.
 * The ``iam_mfa_device_facts`` module was renamed to :ref:`iam_mfa_device_info <iam_mfa_device_info_module>`.
 * The ``iam_role_facts`` module was renamed to :ref:`iam_role_info <iam_role_info_module>`.
 * The ``iam_server_certificate_facts`` module was renamed to :ref:`iam_server_certificate_info <iam_server_certificate_info_module>`.
@@ -272,7 +306,10 @@ Noteworthy module changes
 Plugins
 =======
 
-No notable changes
+Removed Lookup Plugins
+----------------------
+
+* ``redis_kv`` use :ref:`redis <redis_lookup>` instead.
 
 
 Porting custom scripts

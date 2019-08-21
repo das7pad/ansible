@@ -23,6 +23,7 @@ from .util import (
     display,
     is_shippable,
     to_text,
+    ANSIBLE_TEST_DATA_ROOT,
 )
 
 from .util_common import (
@@ -347,7 +348,7 @@ class AnsibleCoreCI:
         display.info('Initializing new %s/%s instance %s.' % (self.platform, self.version, self.instance_id), verbosity=1)
 
         if self.platform == 'windows':
-            with open('examples/scripts/ConfigureRemotingForAnsible.ps1', 'rb') as winrm_config_fd:
+            with open(os.path.join(ANSIBLE_TEST_DATA_ROOT, 'setup', 'ConfigureRemotingForAnsible.ps1'), 'rb') as winrm_config_fd:
                 winrm_config = to_text(winrm_config_fd.read())
         else:
             winrm_config = None
@@ -577,8 +578,13 @@ class SshKey:
 
             def ssh_key_callback(files):  # type: (t.List[t.Tuple[str, str]]) -> None
                 """Add the SSH keys to the payload file list."""
-                files.append((key, key_dst))
-                files.append((pub, pub_dst))
+                if data_context().content.collection:
+                    working_path = data_context().content.collection.directory
+                else:
+                    working_path = ''
+
+                files.append((key, os.path.join(working_path, key_dst)))
+                files.append((pub, os.path.join(working_path, pub_dst)))
 
             data_context().register_payload_callback(ssh_key_callback)
 

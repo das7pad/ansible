@@ -19,6 +19,9 @@ from ansible.module_utils.network.ios.facts.interfaces.interfaces import Interfa
 from ansible.module_utils.network.ios.facts.l2_interfaces.l2_interfaces import L2_InterfacesFacts
 from ansible.module_utils.network.ios.facts.vlans.vlans import VlansFacts
 from ansible.module_utils.network.ios.facts.lag_interfaces.lag_interfaces import Lag_interfacesFacts
+from ansible.module_utils.network.ios.facts.lacp.lacp import LacpFacts
+from ansible.module_utils.network.ios.facts.lacp_interfaces.lacp_interfaces import Lacp_InterfacesFacts
+from ansible.module_utils.network.ios.facts.lldp_global.lldp_global import Lldp_globalFacts
 from ansible.module_utils.network.ios.facts.legacy.base import Default, Hardware, Interfaces, Config
 
 
@@ -34,6 +37,9 @@ FACT_RESOURCE_SUBSETS = dict(
     l2_interfaces=L2_InterfacesFacts,
     vlans=VlansFacts,
     lag_interfaces=Lag_interfacesFacts,
+    lacp=LacpFacts,
+    lacp_interfaces=Lacp_InterfacesFacts,
+    lldp_global=Lldp_globalFacts
 )
 
 
