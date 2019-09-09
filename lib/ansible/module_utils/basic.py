@@ -76,6 +76,12 @@ try:
 except ImportError:
     pass
 
+try:
+    from sentry_sdk import capture_exception
+except ImportError:
+    def capture_exception():
+        pass
+
 # Python2 & 3 way to get NoneType
 NoneType = type(None)
 
@@ -2071,6 +2077,8 @@ class AnsibleModule(object):
 
     def fail_json(self, **kwargs):
         ''' return from the module, with an error message '''
+        if sys.exc_info()[0]:
+            capture_exception()
 
         if 'msg' not in kwargs:
             raise AssertionError("implementation error -- msg to explain the error is required")
