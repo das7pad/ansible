@@ -1019,7 +1019,7 @@ class TaskExecutor:
         Returns the correct action plugin to handle the requestion task action
         '''
 
-        module_prefix = self._task.action.split('_')[0]
+        module_prefix = self._task.action.split('.')[-1].split('_')[0]
 
         collections = self._task.collections
 
@@ -1060,6 +1060,7 @@ def start_connection(play_context, variables):
     for dirname in candidate_paths:
         ansible_connection = os.path.join(dirname, 'ansible-connection')
         if os.path.isfile(ansible_connection):
+            display.vvvv("Found ansible-connection at path {0}".format(ansible_connection))
             break
     else:
         raise AnsibleError("Unable to find location of 'ansible-connection'. "

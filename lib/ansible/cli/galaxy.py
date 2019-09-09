@@ -285,6 +285,8 @@ class GalaxyCLI(CLI):
                                     help='The path to the collection tarball to publish.')
         publish_parser.add_argument('--no-wait', dest='wait', action='store_false', default=True,
                                     help="Don't wait for import validation results.")
+        publish_parser.add_argument('--import-timeout', dest='import_timeout', type=int, default=0,
+                                    help="The time to wait for the collection import process to finish.")
 
     def post_process_args(self, options):
         options = super(GalaxyCLI, self).post_process_args(options)
@@ -306,7 +308,7 @@ class GalaxyCLI(CLI):
                         'key': key,
                     }
                 ],
-                'environment': [
+                'env': [
                     {'name': 'ANSIBLE_GALAXY_SERVER_%s_%s' % (section.upper(), key.upper())},
                 ],
                 'required': required,
@@ -403,7 +405,7 @@ class GalaxyCLI(CLI):
                 display.vvv("found role %s in yaml file" % to_text(role))
                 if "name" not in role and "src" not in role:
                     raise AnsibleError("Must specify name or src for role")
-                return [GalaxyRole(self.galaxy, **role)]
+                return [GalaxyRole(self.galaxy, self.api, **role)]
             else:
                 b_include_path = to_bytes(requirement["include"], errors="surrogate_or_strict")
                 if not os.path.isfile(b_include_path):
@@ -412,7 +414,7 @@ class GalaxyCLI(CLI):
 
                 with open(b_include_path, 'rb') as f_include:
                     try:
-                        return [GalaxyRole(self.galaxy, **r) for r in
+                        return [GalaxyRole(self.galaxy, self.api, **r) for r in
                                 (RoleRequirement.role_yaml_parse(i) for i in yaml.safe_load(f_include))]
                     except Exception as e:
                         raise AnsibleError("Unable to load data from include requirements file: %s %s"
@@ -720,7 +722,7 @@ class GalaxyCLI(CLI):
         for role in context.CLIARGS['args']:
 
             role_info = {'path': roles_path}
-            gr = GalaxyRole(self.galaxy, role)
+            gr = GalaxyRole(self.galaxy, self.api, role)
 
             install_info = gr.install_info
             if install_info:
@@ -825,7 +827,7 @@ class GalaxyCLI(CLI):
             # (and their dependencies, unless the user doesn't want us to).
             for rname in context.CLIARGS['args']:
                 role = RoleRequirement.role_yaml_parse(rname.strip())
-                roles_left.append(GalaxyRole(self.galaxy, **role))
+                roles_left.append(GalaxyRole(self.galaxy, self.api, **role))
 
         for role in roles_left:
             # only process roles in roles files when names matches if given
@@ -869,7 +871,7 @@ class GalaxyCLI(CLI):
                         display.debug('Installing dep %s' % dep)
                         dep_req = RoleRequirement()
                         dep_info = dep_req.role_yaml_parse(dep)
-                        dep_role = GalaxyRole(self.galaxy, **dep_info)
+                        dep_role = GalaxyRole(self.galaxy, self.api, **dep_info)
                         if '.' not in dep_role.name and '.' not in dep_role.src and dep_role.scm is None:
                             # we know we can skip this, as it's not going to
                             # be found on galaxy.ansible.com
@@ -911,7 +913,7 @@ class GalaxyCLI(CLI):
             raise AnsibleOptionsError('- you must specify at least one role to remove.')
 
         for role_name in context.CLIARGS['args']:
-            role = GalaxyRole(self.galaxy, role_name)
+            role = GalaxyRole(self.galaxy, self.api, role_name)
             try:
                 if role.remove():
                     display.display('- successfully removed %s' % role_name)
@@ -939,7 +941,7 @@ class GalaxyCLI(CLI):
         if context.CLIARGS['role']:
             # show the requested role, if it exists
             name = context.CLIARGS['role']
-            gr = GalaxyRole(self.galaxy, name)
+            gr = GalaxyRole(self.galaxy, self.api, name)
             if gr.metadata:
                 display.display('# %s' % os.path.dirname(gr.path))
                 _display_role(gr)
@@ -962,7 +964,7 @@ class GalaxyCLI(CLI):
                 path_files = os.listdir(role_path)
                 path_found = True
                 for path_file in path_files:
-                    gr = GalaxyRole(self.galaxy, path_file, path=path)
+                    gr = GalaxyRole(self.galaxy, self.api, path_file, path=path)
                     if gr.metadata:
                         _display_role(gr)
             for w in warnings:
@@ -977,8 +979,9 @@ class GalaxyCLI(CLI):
         """
         collection_path = GalaxyCLI._resolve_path(context.CLIARGS['args'])
         wait = context.CLIARGS['wait']
+        timeout = context.CLIARGS['import_timeout']
 
-        publish_collection(collection_path, self.api, wait)
+        publish_collection(collection_path, self.api, wait, timeout)
 
     def execute_search(self):
         ''' searches for roles on the Ansible Galaxy server'''

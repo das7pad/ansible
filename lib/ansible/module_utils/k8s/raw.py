@@ -136,6 +136,10 @@ class KubernetesRawModule(KubernetesAnsibleModule):
         src = self.params.get('src')
         if src:
             self.resource_definitions = self.load_resource_definitions(src)
+        try:
+            self.resource_definitions = [item for item in self.resource_definitions if item]
+        except AttributeError:
+            pass
 
         if not resource_definition and not src:
             implicit_definition = dict(
@@ -296,7 +300,7 @@ class KubernetesRawModule(KubernetesAnsibleModule):
                 success = True
                 result['result'] = k8s_obj
                 if wait:
-                    success, result['result'], result['duration'] = self.wait(resource, definition, wait_sleep, wait_timeout)
+                    success, result['result'], result['duration'] = self.wait(resource, definition, wait_sleep, wait_timeout, condition=wait_condition)
                 if existing:
                     existing = existing.to_dict()
                 else:

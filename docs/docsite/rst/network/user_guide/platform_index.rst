@@ -20,14 +20,17 @@ Some Ansible Network platforms support multiple connection types, privilege esca
    platform_exos
    platform_icx
    platform_ios
+   platform_iosxr
    platform_ironware
    platform_junos
+   platform_meraki
    platform_netvisor
    platform_nos
    platform_nxos
    platform_routeros
    platform_slxos
    platform_voss
+   platform_vyos
    platform_netconf_enabled
 
 .. _settings_by_platform:
@@ -73,6 +76,7 @@ Settings by Platform
     Junos OS `[†]`_                  ``junos``                ✓            ✓                 ✓
     Lenovo CNOS                      ``cnos``                 ✓                              ✓
     Lenovo ENOS                      ``enos``                 ✓                              ✓
+    Meraki                           ``meraki``                                              ✓
     MikroTik RouterOS                ``routeros``             ✓
     Nokia SR OS                      ``sros``                 ✓                              ✓
     Pluribus Netvisor                ``netvisor``             ✓

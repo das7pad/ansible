@@ -316,7 +316,9 @@ cert_days:
   returned: success
   type: int
 challenge_data:
-  description: Per identifier / challenge type challenge data.
+  description:
+    - Per identifier / challenge type challenge data.
+    - Since Ansible 2.8.5, only challenges which are not yet valid are returned.
   returned: changed
   type: complex
   contains:
@@ -353,7 +355,9 @@ challenge_data:
       sample: _acme-challenge.example.com
       version_added: "2.5"
 challenge_data_dns:
-  description: List of TXT values per DNS record, in case challenge is C(dns-01).
+  description:
+    - List of TXT values per DNS record, in case challenge is C(dns-01).
+    - Since Ansible 2.8.5, only challenges which are not yet valid are returned.
   returned: changed
   type: dict
   version_added: "2.5"
@@ -390,6 +394,11 @@ all_chains:
   returned: when certificate was retrieved and I(retrieve_all_alternates) is set to C(yes)
   type: list
   contains:
+    cert:
+      description:
+        - The leaf certificate itself, in PEM format.
+      type: str
+      returned: always
     chain:
       description:
         - The certificate chain, excluding the root, as concatenated PEM certificates.
@@ -668,12 +677,10 @@ class ACMEClient(object):
         if info['status'] not in [200]:
             raise ModuleFailException("Error new cert: CODE: {0} RESULT: {1}".format(info['status'], result))
 
-        order = info['location']
-
         status = result['status']
         while status not in ['valid', 'invalid']:
             time.sleep(2)
-            result, dummy = self.account.get_request(order)
+            result, dummy = self.account.get_request(self.order_uri)
             status = result['status']
 
         if status != 'valid':
@@ -834,8 +841,13 @@ class ACMEClient(object):
         data = {}
         for type_identifier, auth in self.authorizations.items():
             identifier_type, identifier = type_identifier.split(':', 1)
+            auth = self.authorizations[type_identifier]
+            # Skip valid authentications: their challenges are already valid
+            # and do not need to be returned
+            if auth['status'] == 'valid':
+                continue
             # We drop the type from the key to preserve backwards compatibility
-            data[identifier] = self._get_challenge_data(self.authorizations[type_identifier], identifier_type, identifier)
+            data[identifier] = self._get_challenge_data(auth, identifier_type, identifier)
         # Get DNS challenge data
         data_dns = {}
         if self.challenge == 'dns-01':
@@ -917,22 +929,19 @@ class ACMEClient(object):
                     except ModuleFailException as e:
                         self.module.warn('Error while downloading alternative certificate {0}: {1}'.format(alternate, e))
                         continue
-                    alt_chain = alt_cert.get('chain', [])
-                    if alt_chain:
-                        alternate_chains.append(alt_chain)
-                    else:
-                        self.module.warn('Alternative certificate {0} chain is empty'.format(alternate))
+                    alternate_chains.append(alt_cert)
                 self.all_chains = []
 
-                def _append_all_chains(chain):
+                def _append_all_chains(cert_data):
                     self.all_chains.append(dict(
-                        chain=("\n".join(chain)).encode('utf8'),
-                        full_chain=(cert['cert'] + "\n".join(chain)).encode('utf8'),
+                        cert=cert_data['cert'].encode('utf8'),
+                        chain=("\n".join(cert_data.get('chain', []))).encode('utf8'),
+                        full_chain=(cert_data['cert'] + "\n".join(cert_data.get('chain', []))).encode('utf8'),
                     ))
 
-                _append_all_chains(cert.get('chain', []))
+                _append_all_chains(cert)
                 for alt_chain in alternate_chains:
-                    _append_all_chains(alt_chain.get('chain', []))
+                    _append_all_chains(alt_chain)
 
         if cert['cert'] is not None:
             pem_cert = cert['cert']
