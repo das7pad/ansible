@@ -2080,14 +2080,6 @@ class AnsibleModule(object):
         if sys.exc_info()[0]:
             capture_exception()
 
-        try:
-            import raven
-        except ImportError:
-            pass
-        else:
-            if raven.base.Raven is not None:
-                raven.base.Raven.captureException()
-
         if 'msg' not in kwargs:
             raise AssertionError("implementation error -- msg to explain the error is required")
         kwargs['failed'] = True
