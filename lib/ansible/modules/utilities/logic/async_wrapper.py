@@ -205,8 +205,7 @@ def _run_module(wrapped_cmd, jid, job_path, payload):
     os.rename(tmp_job_path, job_path)
 
 
-if __name__ == '__main__':
-
+def main():
     if len(sys.argv) < 5:
         print(json.dumps({
             "failed": True,
@@ -349,3 +348,7 @@ if __name__ == '__main__':
             "msg": "FATAL ERROR: %s" % e
         }))
         sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
