@@ -84,6 +84,13 @@ options:
         required: false
         type: bool
         default: no
+    update_cache:
+        version_added: "2.10"
+        description:
+            - noop
+        required: false
+        type: bool
+        default: no
 author: "bleader (@bleader)"
 notes:
   - When using pkgsite, be careful that already in cache packages won't be downloaded again.
@@ -352,7 +359,9 @@ def main():
             rootdir=dict(default="", required=False, type='path'),
             chroot=dict(default="", required=False, type='path'),
             jail=dict(default="", required=False, type='str'),
-            autoremove=dict(default=False, type='bool')),
+            autoremove=dict(default=False, type='bool'),
+            update_cache=dict(default=False, type='bool'),
+        ),
         supports_check_mode=True,
         mutually_exclusive=[["rootdir", "chroot", "jail"]])
 
