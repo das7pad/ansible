@@ -20,6 +20,7 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
+from io import StringIO
 import re
 import json
 
@@ -29,10 +30,21 @@ from units.compat.mock import patch, MagicMock
 from ansible.module_utils._text import to_text
 from ansible.errors import AnsibleConnectionFailure
 from ansible.playbook.play_context import PlayContext
+from ansible.plugins.connection import network_cli
 from ansible.plugins.loader import connection_loader
 
 
 class TestConnectionClass(unittest.TestCase):
+
+    def test_network_cli_connection_module(self):
+        play_context = PlayContext()
+        play_context.prompt = (
+            '[sudo via ansible, key=ouzmdnewuhucvuaabtjmweasarviygqq] password: '
+        )
+        play_context.network_os = 'eos'
+        in_stream = StringIO()
+
+        self.assertIsInstance(network_cli.Connection(play_context, in_stream), network_cli.Connection)
 
     def test_network_cli__invalid_os(self):
         pc = PlayContext()
@@ -77,13 +89,13 @@ class TestConnectionClass(unittest.TestCase):
         terminal = MagicMock(supports_multiplexing=False)
         conn._terminal = terminal
         conn._ssh_shell = MagicMock()
-        conn.paramiko_conn = MagicMock()
+        conn._paramiko_conn = MagicMock()
         conn._connected = True
 
         conn.close()
         self.assertTrue(terminal.on_close_shell.called)
         self.assertIsNone(conn._ssh_shell)
-        self.assertIsNone(conn.paramiko_conn)
+        self.assertIsNone(conn._paramiko_conn)
 
     @patch("ansible.plugins.connection.paramiko_ssh.Connection._connect")
     def test_network_cli_exec_command(self, mocked_super):
@@ -127,7 +139,7 @@ class TestConnectionClass(unittest.TestCase):
         """
 
         mock__shell.recv.side_effect = [response, None]
-        output = conn.send(b'command')
+        conn.send(b'command')
 
         mock__shell.sendall.assert_called_with(b'command\r')
         self.assertEqual(to_text(conn._command_response), 'command response')

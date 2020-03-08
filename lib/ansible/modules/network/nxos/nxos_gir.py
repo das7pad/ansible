@@ -29,6 +29,7 @@ version_added: "2.2"
 short_description: Trigger a graceful removal or insertion (GIR) of the switch.
 description:
     - Trigger a graceful removal or insertion (GIR) of the switch.
+    - GIR processing may take more than 2 minutes. Timeout settings are automatically extended to 200s when user timeout settings are insufficient.
 author:
     - Gabriele Gerbino (@GGabriele)
 notes:
@@ -188,7 +189,6 @@ def get_reset_reasons(module):
 
 def get_commands(module, state, mode):
     commands = list()
-    system_mode = ''
     if module.params['system_mode_maintenance'] is True and mode == 'normal':
         commands.append('system mode maintenance')
     elif (module.params['system_mode_maintenance'] is False and

@@ -22,18 +22,26 @@ options:
   group:
     description:
     - The maintenance group name that you want to add the node to.
+    type: str
     required: true
   node:
     description:
     - The node to be added to the maintenance group.
     - The value equals the nodeid.
+    type: str
     required: true
   state:
     description:
     - Use C(present) or C(absent) for adding or removing.
     - Use C(query) for listing an object or multiple objects.
-    default: present
+    type: str
     choices: [ absent, present, query ]
+    default: present
+  name_alias:
+    version_added: '2.10'
+    description:
+    - The alias for the current object. This relates to the nameAlias field in ACI.
+    type: str
 extends_documentation_fragment:
 - aci
 author:
@@ -178,6 +186,7 @@ def main():
         group=dict(type='str'),  # Not required for querying all objects
         node=dict(type='str'),
         state=dict(type='str', default='present', choices=['absent', 'present', 'query']),
+        name_alias=dict(type='str'),
     )
 
     module = AnsibleModule(
@@ -189,9 +198,10 @@ def main():
         ],
     )
 
-    state = module.params['state']
-    group = module.params['group']
-    node = module.params['node']
+    state = module.params.get('state')
+    group = module.params.get('group')
+    node = module.params.get('node')
+    name_alias = module.params.get('name_alias')
 
     aci = ACIModule(module)
     aci.construct_url(
@@ -217,6 +227,7 @@ def main():
             class_config=dict(
                 from_=node,
                 to_=node,
+                nameAlias=name_alias,
             ),
         )
 

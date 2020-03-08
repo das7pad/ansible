@@ -83,13 +83,19 @@ class L2_InterfacesFacts(object):
         if get_interface_type(intf) == 'unknown':
             return {}
 
-        if intf.lower().startswith('gi'):
+        if intf.upper()[:2] in ('HU', 'FO', 'TW', 'TE', 'GI', 'FA', 'ET', 'PO'):
             # populate the facts from the configuration
             config['name'] = normalize_interface(intf)
-
+            has_mode = utils.parse_conf_arg(conf, 'switchport mode')
+            if has_mode:
+                config['mode'] = has_mode
             has_access = utils.parse_conf_arg(conf, 'switchport access vlan')
             if has_access:
                 config["access"] = {"vlan": int(has_access)}
+
+            has_voice = utils.parse_conf_arg(conf, 'switchport voice vlan')
+            if has_voice:
+                config["voice"] = {"vlan": int(has_voice)}
 
             trunk = dict()
             trunk["encapsulation"] = utils.parse_conf_arg(conf, 'encapsulation')

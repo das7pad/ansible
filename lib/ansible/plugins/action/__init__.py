@@ -115,6 +115,18 @@ class ActionBase(with_metaclass(ABCMeta, object)):
 
         return result
 
+    def cleanup(self, force=False):
+        """Method to perform a clean up at the end of an action plugin execution
+
+        By default this is designed to clean up the shell tmpdir, and is toggled based on whether
+        async is in use
+
+        Action plugins may override this if they deem necessary, but should still call this method
+        via super
+        """
+        if force or not self._task.async_val:
+            self._remove_tmp_path(self._connection._shell.tmpdir)
+
     def get_plugin_option(self, plugin, option, default=None):
         """Helper to get an option from a plugin without having to use
         the try/except dance everywhere to set a default
@@ -179,13 +191,26 @@ class ActionBase(with_metaclass(ABCMeta, object)):
             name=module_name,
             path=module_path,
         )
-        become_spec = dict(
-            become=self._play_context.become,
-            become_method=self._play_context.become_method,
-            become_user=self._play_context.become_user,
-            become_password=self._play_context.become_pass,
-            become_flags=self._play_context.become_flags,
-        )
+        if self._connection.become:
+            become_spec = dict(
+                become=True,
+                become_method=self._connection.become.name,
+                become_user=self._connection.become.get_option(
+                    'become_user', playcontext=self._play_context),
+                become_password=self._connection.become.get_option(
+                    'become_pass', playcontext=self._play_context),
+                become_flags=self._connection.become.get_option(
+                    'become_flags', playcontext=self._play_context),
+            )
+        else:
+            become_spec = dict(
+                become=False,
+                become_method=None,
+                become_user=None,
+                become_password=None,
+                become_flags=None,
+            )
+
         invocation = ModuleInvocation(
             module=module,
             args=module_args,
@@ -278,7 +303,7 @@ class ActionBase(with_metaclass(ABCMeta, object)):
             module_style == "new",                     # old style modules do not support pipelining
             not C.DEFAULT_KEEP_REMOTE_FILES,           # user wants remote files
             not wrap_async or self._connection.always_pipeline_modules,  # async does not normally support pipelining unless it does (eg winrm)
-            self._play_context.become_method != 'su',  # su does not work with pipelining,
+            (self._connection.become.name if self._connection.become else '') != 'su',  # su does not work with pipelining,
             # FIXME: we might need to make become_method exclusion a configurable list
         ]:
             if not condition:
@@ -316,7 +341,7 @@ class ActionBase(with_metaclass(ABCMeta, object)):
         '''
         # if we don't use become then we know we aren't switching to a
         # different unprivileged user
-        if not self._play_context.become:
+        if not self._connection.become:
             return False
 
         # if we use become and the user is not an admin (or same user) then
@@ -652,7 +677,7 @@ class ActionBase(with_metaclass(ABCMeta, object)):
             become_user = self.get_become_option('become_user')
             if getattr(self._connection, '_remote_is_local', False):
                 pass
-            elif sudoable and self._play_context.become and become_user:
+            elif sudoable and self._connection.become and become_user:
                 expand_path = '~%s' % become_user
             else:
                 # use remote user instead, if none set default to current user
@@ -1076,7 +1101,7 @@ class ActionBase(with_metaclass(ABCMeta, object)):
         ruser = self._get_remote_user()
         buser = self.get_become_option('become_user')
         if (sudoable and self._connection.become and  # if sudoable and have become
-                self._connection.transport != 'network_cli' and  # if not using network_cli
+                self._connection.transport.split('.')[-1] != 'network_cli' and  # if not using network_cli
                 (C.BECOME_ALLOW_SAME_USER or (buser != ruser or not any((ruser, buser))))):  # if we allow same user PE or users are different and either is set
             display.debug("_low_level_execute_command(): using become for this command")
             cmd = self._connection.become.build_become_command(cmd, self._connection._shell)
@@ -1138,7 +1163,11 @@ class ActionBase(with_metaclass(ABCMeta, object)):
         display.debug("Going to peek to see if file has changed permissions")
         peek_result = self._execute_module(module_name='file', module_args=dict(path=destination, _diff_peek=True), task_vars=task_vars, persist_files=True)
 
-        if not peek_result.get('failed', False) or peek_result.get('rc', 0) == 0:
+        if peek_result.get('failed', False):
+            display.warning(u"Failed to get diff between '%s' and '%s': %s" % (os.path.basename(source), destination, to_text(peek_result.get(u'msg', u''))))
+            return diff
+
+        if peek_result.get('rc', 0) == 0:
 
             if peek_result.get('state') in (None, 'absent'):
                 diff['before'] = u''

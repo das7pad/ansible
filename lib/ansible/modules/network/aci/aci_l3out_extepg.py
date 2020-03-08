@@ -61,6 +61,11 @@ options:
     type: str
     choices: [ absent, present, query ]
     default: present
+  name_alias:
+    version_added: '2.10'
+    description:
+    - The alias for the current object. This relates to the nameAlias field in ACI.
+    type: str
 extends_documentation_fragment: aci
 notes:
 - The C(tenant) and C(domain) and C(vrf) used must exist before using this module in your playbook.
@@ -234,7 +239,8 @@ def main():
                   choices=['AF11', 'AF12', 'AF13', 'AF21', 'AF22', 'AF23', 'AF31', 'AF32', 'AF33', 'AF41', 'AF42',
                            'AF43', 'CS0', 'CS1', 'CS2', 'CS3', 'CS4', 'CS5', 'CS6', 'CS7', 'EF', 'VA', 'unspecified'],
                   aliases=['target']),
-        state=dict(type='str', default='present', choices=['absent', 'present', 'query'])
+        state=dict(type='str', default='present', choices=['absent', 'present', 'query']),
+        name_alias=dict(type='str'),
     )
 
     module = AnsibleModule(
@@ -248,13 +254,14 @@ def main():
 
     aci = ACIModule(module)
 
-    tenant = module.params['tenant']
-    l3out = module.params['l3out']
-    extepg = module.params['extepg']
-    description = module.params['description']
-    preferred_group = aci.boolean(module.params['preferred_group'], 'include', 'exclude')
-    dscp = module.params['dscp']
-    state = module.params['state']
+    tenant = module.params.get('tenant')
+    l3out = module.params.get('l3out')
+    extepg = module.params.get('extepg')
+    description = module.params.get('description')
+    preferred_group = aci.boolean(module.params.get('preferred_group'), 'include', 'exclude')
+    dscp = module.params.get('dscp')
+    state = module.params.get('state')
+    name_alias = module.params.get('name_alias')
 
     aci.construct_url(
         root_class=dict(
@@ -286,7 +293,8 @@ def main():
                 name=extepg,
                 descr=description,
                 prefGrMemb=preferred_group,
-                targetDscp=dscp
+                targetDscp=dscp,
+                nameAlias=name_alias,
             ),
         )
 

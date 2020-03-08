@@ -12,13 +12,13 @@ from .config import (
     TestConfig,
 )
 
+from .io import (
+    write_text_file,
+)
+
 from .util import (
     COVERAGE_CONFIG_NAME,
     remove_tree,
-)
-
-from .util_common import (
-    write_text_file,
 )
 
 from .data import (
@@ -111,11 +111,11 @@ include =
         # temporary work-around for import sanity test
         coverage_config += '''
 include =
-     %s/*
+    %s/*
 
 omit =
-    */test/results/*
-''' % data_context().content.root
+    %s/*
+''' % (data_context().content.root, os.path.join(data_context().content.root, data_context().content.results_path))
     else:
         coverage_config += '''
 include =

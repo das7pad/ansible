@@ -13,7 +13,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'supported_by': 'community'}
 
 
-DOCUMENTATION = '''
+DOCUMENTATION = r'''
 ---
 module: zabbix_template
 short_description: Create/update/delete/dump Zabbix template
@@ -27,7 +27,7 @@ author:
     - "Dusan Matejka (@D3DeFi)"
 requirements:
     - "python >= 2.6"
-    - "zabbix-api >= 0.5.3"
+    - "zabbix-api >= 0.5.4"
 options:
     template_name:
         description:
@@ -35,6 +35,7 @@ options:
             - Required when I(template_json) or I(template_xml) are not used.
             - Mutually exclusive with I(template_json) and I(template_xml).
         required: false
+        type: str
     template_json:
         description:
             - JSON dump of templates to import.
@@ -52,14 +53,16 @@ options:
             - Mutually exclusive with I(template_name) and I(template_json).
         required: false
         version_added: '2.9'
+        type: str
     template_groups:
         description:
-            - List of host groups to add template to when template is createad.
+            - List of host groups to add template to when template is created.
             - Replaces the current host groups the template belongs to if the template is already present.
             - Required when creating a new template with C(state=present) and I(template_name) is used.
               Not required when updating an existing template.
         required: false
         type: list
+        elements: str
     link_templates:
         description:
             - List of template names to be linked to the template.
@@ -67,12 +70,14 @@ options:
               cleared from the template.
         required: false
         type: list
+        elements: str
     clear_templates:
         description:
             - List of template names to be unlinked and cleared from the template.
             - This option is ignored if template is being created for the first time.
         required: false
         type: list
+        elements: str
     macros:
         description:
             - List of user macros to create for the template.
@@ -80,36 +85,51 @@ options:
             - See examples on how to pass macros.
         required: false
         type: list
+        elements: dict
         suboptions:
             name:
                 description:
                     - Name of the macro.
                     - Must be specified in {$NAME} format.
+                type: str
             value:
                 description:
                     - Value of the macro.
+                type: str
     dump_format:
         description:
             - Format to use when dumping template with C(state=dump).
+            - This option is deprecated and will eventually be removed in 2.14.
         required: false
         choices: [json, xml]
         default: "json"
         version_added: '2.9'
+        type: str
+    omit_date:
+        description:
+            - Removes the date field for the exported/dumped template
+            - Requires C(state=dump)
+        required: false
+        type: bool
+        default: false
+        version_added: '2.10'
     state:
         description:
             - Required state of the template.
             - On C(state=present) template will be created/imported or updated depending if it is already present.
             - On C(state=dump) template content will get dumped into required format specified in I(dump_format).
             - On C(state=absent) template will be deleted.
+            - The C(state=dump) is deprecated and will eventually be removed in 2.14. The M(zabbix_template_info) module should be used instead.
         required: false
         choices: [present, absent, dump]
         default: "present"
+        type: str
 
 extends_documentation_fragment:
     - zabbix
 '''
 
-EXAMPLES = '''
+EXAMPLES = r'''
 ---
 - name: Create a new Zabbix template linked to groups, macros and templates
   local_action:
@@ -209,6 +229,7 @@ EXAMPLES = '''
     login_user: username
     login_password: password
     template_name: Template
+    omit_date: yes
     state: dump
   register: template_dump
 
@@ -220,15 +241,16 @@ EXAMPLES = '''
     login_password: password
     template_name: Template
     dump_format: xml
+    omit_date: false
     state: dump
   register: template_dump
 '''
 
-RETURN = '''
+RETURN = r'''
 ---
 template_json:
   description: The JSON dump of the template
-  returned: when state is dump
+  returned: when state is dump and omit_date is no
   type: str
   sample: {
         "zabbix_export":{
@@ -255,13 +277,12 @@ template_json:
 
 template_xml:
   description: dump of the template in XML representation
-  returned: when state is dump and dump_format is xml
+  returned: when state is dump, dump_format is xml and omit_date is yes
   type: str
   sample: |-
     <?xml version="1.0" ?>
     <zabbix_export>
         <version>4.2</version>
-        <date>2019-07-12T13:37:26Z</date>
         <groups>
             <group>
                 <name>Templates</name>
@@ -363,7 +384,7 @@ class Template(object):
                                template_macros, template_content, template_type):
         """Compares template parameters to already existing values if any are found.
 
-        template_json - JSON structures are compared as deep sorted dictonaries,
+        template_json - JSON structures are compared as deep sorted dictionaries,
         template_xml - XML structures are compared as strings, but filtered and formatted first,
         If none above is used, all the other arguments are compared to their existing counterparts
         retrieved from Zabbix API."""
@@ -379,7 +400,7 @@ class Template(object):
             return changed
 
         existing_template = self.dump_template(template_ids, template_type='json')
-        # Compare JSON objects as deep sorted python dictonaries
+        # Compare JSON objects as deep sorted python dictionaries
         if template_content is not None and template_type == 'json':
             parsed_template_json = self.load_json_template(template_content)
             if self.diff_template(parsed_template_json, existing_template):
@@ -394,10 +415,16 @@ class Template(object):
             if set(template_groups) != set(existing_groups):
                 changed = True
 
+        if 'templates' not in existing_template['zabbix_export']['templates'][0]:
+            existing_template['zabbix_export']['templates'][0]['templates'] = []
+
         # Check if any new templates would be linked or any existing would be unlinked
         exist_child_templates = [t['name'] for t in existing_template['zabbix_export']['templates'][0]['templates']]
         if link_templates is not None:
             if set(link_templates) != set(exist_child_templates):
+                changed = True
+        else:
+            if set([]) != set(exist_child_templates):
                 changed = True
 
         # Mark that there will be changes when at least one existing template will be unlinked
@@ -406,6 +433,9 @@ class Template(object):
                 if t in exist_child_templates:
                     changed = True
                     break
+
+        if 'macros' not in existing_template['zabbix_export']['templates'][0]:
+            existing_template['zabbix_export']['templates'][0]['macros'] = []
 
         if template_macros is not None:
             existing_macros = existing_template['zabbix_export']['templates'][0]['macros']
@@ -421,6 +451,8 @@ class Template(object):
 
         if link_template_ids is not None:
             template_changes.update({'templates': link_template_ids})
+        else:
+            template_changes.update({'templates': []})
 
         if clear_template_ids is not None:
             template_changes.update({'templates_clear': clear_template_ids})
@@ -447,16 +479,22 @@ class Template(object):
         else:
             return obj
 
-    def dump_template(self, template_ids, template_type='json'):
+    def dump_template(self, template_ids, template_type='json', omit_date=False):
         if self._module.check_mode:
             self._module.exit_json(changed=True)
 
         try:
             dump = self._zapi.configuration.export({'format': template_type, 'options': {'templates': template_ids}})
             if template_type == 'xml':
-                return str(ET.tostring(ET.fromstring(dump.encode('utf-8')), encoding='utf-8'))
+                xmlroot = ET.fromstring(dump.encode('utf-8'))
+                # remove date field if requested
+                if omit_date:
+                    date = xmlroot.find(".date")
+                    if date is not None:
+                        xmlroot.remove(date)
+                return str(ET.tostring(xmlroot, encoding='utf-8').decode('utf-8'))
             else:
-                return self.load_json_template(dump)
+                return self.load_json_template(dump, omit_date=omit_date)
 
         except ZabbixAPIException as e:
             self._module.fail_json(msg='Unable to export template: %s' % e)
@@ -509,13 +547,16 @@ class Template(object):
                 if element.text is None and len(list(element)) == 0:
                     template.remove(element)
 
-        # Filter new lines and identation
-        xml_root_text = list(line.strip() for line in ET.tostring(parsed_xml_root).split('\n'))
+        # Filter new lines and indentation
+        xml_root_text = list(line.strip() for line in ET.tostring(parsed_xml_root, encoding='utf8', method='xml').decode().split('\n'))
         return ''.join(xml_root_text)
 
-    def load_json_template(self, template_json):
+    def load_json_template(self, template_json, omit_date=False):
         try:
-            return json.loads(template_json)
+            jsondoc = json.loads(template_json)
+            if omit_date and 'date' in jsondoc['zabbix_export']:
+                del jsondoc['zabbix_export']['date']
+            return jsondoc
         except ValueError as e:
             self._module.fail_json(msg='Invalid JSON provided', details=to_native(e), exception=traceback.format_exc())
 
@@ -541,6 +582,9 @@ class Template(object):
                 'createMissing': True,
                 'updateExisting': True,
                 'deleteMissing': True
+            },
+            'groups': {
+                'createMissing': True
             },
             'httptests': {
                 'createMissing': True,
@@ -582,6 +626,14 @@ class Template(object):
             if LooseVersion(api_version).version[:2] <= LooseVersion('3.2').version:
                 update_rules['applications']['updateExisting'] = True
 
+            # templateLinkage.deleteMissing only available in 4.0 branch higher .16 and higher 4.4.4
+            # it's not available in 4.2 branches or lower 4.0.16
+            if LooseVersion(api_version).version[:2] == LooseVersion('4.0').version and \
+               LooseVersion(api_version).version[:3] >= LooseVersion('4.0.16').version:
+                update_rules['templateLinkage']['deleteMissing'] = True
+            if LooseVersion(api_version).version[:3] >= LooseVersion('4.4.4').version:
+                update_rules['templateLinkage']['deleteMissing'] = True
+
             import_data = {'format': template_type, 'source': template_content, 'rules': update_rules}
             self._zapi.configuration.import_(import_data)
         except ZabbixAPIException as e:
@@ -605,8 +657,9 @@ def main():
             link_templates=dict(type='list', required=False),
             clear_templates=dict(type='list', required=False),
             macros=dict(type='list', required=False),
+            omit_date=dict(type='bool', required=False, default=False),
             dump_format=dict(type='str', required=False, default='json', choices=['json', 'xml']),
-            state=dict(default="present", choices=['present', 'absent', 'dump']),
+            state=dict(type='str', default="present", choices=['present', 'absent', 'dump']),
             timeout=dict(type='int', default=10)
         ),
         required_one_of=[
@@ -638,6 +691,7 @@ def main():
     link_templates = module.params['link_templates']
     clear_templates = module.params['clear_templates']
     template_macros = module.params['macros']
+    omit_date = module.params['omit_date']
     dump_format = module.params['dump_format']
     state = module.params['state']
     timeout = module.params['timeout']
@@ -681,13 +735,14 @@ def main():
         module.exit_json(changed=True, result="Successfully deleted template %s" % template_name)
 
     elif state == "dump":
+        module.deprecate("The 'dump' state has been deprecated and will be removed, use 'zabbix_template_info' module instead.", version='2.14')
         if not template_ids:
             module.fail_json(msg='Template not found: %s' % template_name)
 
         if dump_format == 'json':
-            module.exit_json(changed=False, template_json=template.dump_template(template_ids, template_type='json'))
+            module.exit_json(changed=False, template_json=template.dump_template(template_ids, template_type='json', omit_date=omit_date))
         elif dump_format == 'xml':
-            module.exit_json(changed=False, template_xml=template.dump_template(template_ids, template_type='xml'))
+            module.exit_json(changed=False, template_xml=template.dump_template(template_ids, template_type='xml', omit_date=omit_date))
 
     elif state == "present":
         # Load all subelements for template that were provided by user

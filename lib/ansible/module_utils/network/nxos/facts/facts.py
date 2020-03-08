@@ -12,6 +12,7 @@ calls the appropriate facts gathering function
 from ansible.module_utils.network.common.facts.facts import FactsBase
 from ansible.module_utils.network.nxos.facts.legacy.base import Default, Legacy, Hardware, Config, Interfaces, Features
 from ansible.module_utils.network.nxos.facts.bfd_interfaces.bfd_interfaces import Bfd_interfacesFacts
+from ansible.module_utils.network.nxos.facts.hsrp_interfaces.hsrp_interfaces import Hsrp_interfacesFacts
 from ansible.module_utils.network.nxos.facts.interfaces.interfaces import InterfacesFacts
 from ansible.module_utils.network.nxos.facts.l2_interfaces.l2_interfaces import L2_interfacesFacts
 from ansible.module_utils.network.nxos.facts.lacp.lacp import LacpFacts
@@ -21,6 +22,9 @@ from ansible.module_utils.network.nxos.facts.telemetry.telemetry import Telemetr
 from ansible.module_utils.network.nxos.facts.vlans.vlans import VlansFacts
 from ansible.module_utils.network.nxos.facts.lacp_interfaces.lacp_interfaces import Lacp_interfacesFacts
 from ansible.module_utils.network.nxos.facts.lldp_global.lldp_global import Lldp_globalFacts
+from ansible.module_utils.network.nxos.facts.lldp_interfaces.lldp_interfaces import Lldp_interfacesFacts
+from ansible.module_utils.network.nxos.facts.acl_interfaces.acl_interfaces import Acl_interfacesFacts
+from ansible.module_utils.network.nxos.facts.acls.acls import AclsFacts
 
 
 FACT_LEGACY_SUBSETS = dict(
@@ -33,6 +37,7 @@ FACT_LEGACY_SUBSETS = dict(
 )
 FACT_RESOURCE_SUBSETS = dict(
     bfd_interfaces=Bfd_interfacesFacts,
+    hsrp_interfaces=Hsrp_interfacesFacts,
     lag_interfaces=Lag_interfacesFacts,
     lldp_global=Lldp_globalFacts,
     telemetry=TelemetryFacts,
@@ -42,6 +47,9 @@ FACT_RESOURCE_SUBSETS = dict(
     interfaces=InterfacesFacts,
     l3_interfaces=L3_interfacesFacts,
     l2_interfaces=L2_interfacesFacts,
+    lldp_interfaces=Lldp_interfacesFacts,
+    acl_interfaces=Acl_interfacesFacts,
+    acls=AclsFacts,
 )
 
 
@@ -64,9 +72,11 @@ class Facts(FactsBase):
         :return: the facts gathered
         """
         if self.VALID_RESOURCE_SUBSETS:
-            self.get_network_resources_facts(FACT_RESOURCE_SUBSETS, resource_facts_type, data)
+            self.get_network_resources_facts(
+                FACT_RESOURCE_SUBSETS, resource_facts_type, data)
 
         if self.VALID_LEGACY_GATHER_SUBSETS:
-            self.get_network_legacy_facts(FACT_LEGACY_SUBSETS, legacy_facts_type)
+            self.get_network_legacy_facts(
+                FACT_LEGACY_SUBSETS, legacy_facts_type)
 
         return self.ansible_facts, self._warnings

@@ -96,6 +96,10 @@ class L2_Interfaces(ConfigBase):
         commands = []
 
         state = self._module.params['state']
+
+        if state in ('overridden', 'merged', 'replaced') and not want:
+            self._module.fail_json(msg='value of config parameter must not be empty for state {0}'.format(state))
+
         if state == 'overridden':
             commands = self._state_overridden(want, have, self._module)
         elif state == 'deleted':
@@ -150,7 +154,7 @@ class L2_Interfaces(ConfigBase):
                     not_in_have.add(interface['name'])
             else:
                 # We didn't find a matching desired state, which means we can
-                # pretend we recieved an empty desired state.
+                # pretend we received an empty desired state.
                 interface = dict(name=each['name'])
                 commands.extend(self._clear_config(interface, each))
                 continue

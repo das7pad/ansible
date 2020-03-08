@@ -41,7 +41,7 @@ options:
     - Specifies the data type of the sequence. Valid types are bigint, integer,
       and smallint. bigint is the default. The data type determines the default
       minimum and maximum values of the sequence. For more info see the
-      documention
+      documentation
       U(https://www.postgresql.org/docs/current/sql-createsequence.html).
     - Supported from PostgreSQL 10.
     choices: [ bigint, integer, smallint ]
@@ -312,11 +312,11 @@ class Sequence(object):
 
     Arguments:
         module (AnsibleModule) -- object of AnsibleModule class
-        cursor (cursor) -- cursor objec of psycopg2 library
+        cursor (cursor) -- cursor object of psycopg2 library
 
     Attributes:
         module (AnsibleModule) -- object of AnsibleModule class
-        cursor (cursor) -- cursor objec of psycopg2 library
+        cursor (cursor) -- cursor object of psycopg2 library
         changed (bool) --  something was changed after execution or not
         executed_queries (list) -- executed queries
         name (str) -- name of the sequence
@@ -369,11 +369,12 @@ class Sequence(object):
                  "LEFT JOIN pg_namespace n ON n.oid = c.relnamespace "
                  "WHERE NOT pg_is_other_temp_schema(n.oid) "
                  "AND c.relkind = 'S'::\"char\" "
-                 "AND sequence_name = '%s' "
-                 "AND sequence_schema = '%s'" % (self.name,
-                                                 self.schema))
+                 "AND sequence_name = %(name)s "
+                 "AND sequence_schema = %(schema)s")
 
-        res = exec_sql(self, query, add_to_executed=False)
+        res = exec_sql(self, query,
+                       query_params={'name': self.name, 'schema': self.schema},
+                       add_to_executed=False)
 
         if not res:
             self.exists = False

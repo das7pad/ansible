@@ -61,7 +61,7 @@ options:
   ssl_mode:
     description:
       - Determines whether or with what priority a secure SSL TCP/IP connection will be negotiated with the server.
-      - See https://www.postgresql.org/docs/current/static/libpq-ssl.html for more information on the modes.
+      - See U(https://www.postgresql.org/docs/current/static/libpq-ssl.html) for more information on the modes.
       - Default of C(prefer) matches libpq default.
     type: str
     default: prefer
@@ -165,15 +165,15 @@ def set_owner(cursor, schema, owner):
 def get_schema_info(cursor, schema):
     query = ("SELECT schema_owner AS owner "
              "FROM information_schema.schemata "
-             "WHERE schema_name = '%s'" % schema)
-    cursor.execute(query)
+             "WHERE schema_name = %(schema)s")
+    cursor.execute(query, {'schema': schema})
     return cursor.fetchone()
 
 
 def schema_exists(cursor, schema):
     query = ("SELECT schema_name FROM information_schema.schemata "
-             "WHERE schema_name = '%s'" % schema)
-    cursor.execute(query)
+             "WHERE schema_name = %(schema)s")
+    cursor.execute(query, {'schema': schema})
     return cursor.rowcount == 1
 
 

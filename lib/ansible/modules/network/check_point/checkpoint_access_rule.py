@@ -54,7 +54,7 @@ options:
     type: str
   destination:
     description:
-      - Destionation object of the access rule.
+      - Destination object of the access rule.
     type: str
   action:
     description:
@@ -121,7 +121,6 @@ checkpoint_access_rules:
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
 from ansible.module_utils.network.checkpoint.checkpoint import checkpoint_argument_spec, publish, install_policy
-import json
 
 
 def get_access_rule(module, connection):

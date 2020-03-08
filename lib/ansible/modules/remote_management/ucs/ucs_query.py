@@ -18,7 +18,6 @@ short_description: Queries UCS Manager objects by class or distinguished name
 
 description:
   -Queries UCS Manager objects by class or distinguished name.
-  - Examples can be used with the UCS Platform Emulator U(https://cs.co/ucspe).
 
 extends_documentation_fragment: ucs
 
@@ -26,13 +25,13 @@ options:
     class_ids:
         description:
         - One or more UCS Manager Class IDs to query.
-        - As a comma separtated list
+        - As a comma separated list
         type: str
 
     distinguished_names:
         description:
         - One or more UCS Manager Distinguished Names to query.
-        - As a comma separtated list
+        - As a comma separated list
         type: str
 
     delegate_to:

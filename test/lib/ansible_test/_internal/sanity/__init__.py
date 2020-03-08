@@ -4,12 +4,15 @@ __metaclass__ = type
 
 import abc
 import glob
-import json
 import os
 import re
 import collections
 
 from .. import types as t
+
+from ..io import (
+    read_json_file,
+)
 
 from ..util import (
     ApplicationError,
@@ -89,8 +92,6 @@ def command_sanity(args):
     if args.delegate:
         raise Delegate(require=changes, exclude=args.exclude)
 
-    install_command_requirements(args)
-
     tests = sanity_get_tests()
 
     if args.test:
@@ -107,6 +108,8 @@ def command_sanity(args):
 
     total = 0
     failed = []
+
+    requirements_installed = set()  # type: t.Set[str]
 
     for test in tests:
         if args.list_tests:
@@ -180,6 +183,10 @@ def command_sanity(args):
                 sanity_targets = SanityTargets(tuple(all_targets), tuple(usable_targets))
 
                 if usable_targets or test.no_targets:
+                    if version not in requirements_installed:
+                        requirements_installed.add(version)
+                        install_command_requirements(args, version)
+
                     if isinstance(test, SanityCodeSmellTest):
                         result = test.test(args, sanity_targets, version)
                     elif isinstance(test, SanityMultipleVersion):
@@ -665,8 +672,7 @@ class SanityCodeSmellTest(SanityTest):
         self.config = None
 
         if self.config_path:
-            with open(self.config_path, 'r') as config_fd:
-                self.config = json.load(config_fd)
+            self.config = read_json_file(self.config_path)
 
         if self.config:
             self.enabled = not self.config.get('disabled')
