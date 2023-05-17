@@ -400,15 +400,18 @@ HTTPSClientAuthHandler = None
 UnixHTTPSConnection = None
 if hasattr(httplib, 'HTTPSConnection') and hasattr(urllib_request, 'HTTPSHandler'):
     class CustomHTTPSConnection(httplib.HTTPSConnection):
-        def __init__(self, *args, **kwargs):
+        def __init__(self, client_cert=None, client_key=None, *args, **kwargs):
             httplib.HTTPSConnection.__init__(self, *args, **kwargs)
             self.context = None
             if HAS_SSLCONTEXT:
                 self.context = self._context
             elif HAS_URLLIB3_PYOPENSSLCONTEXT:
                 self.context = self._context = PyOpenSSLContext(PROTOCOL)
-            if self.context and self.cert_file:
-                self.context.load_cert_chain(self.cert_file, self.key_file)
+
+            self._client_cert = client_cert
+            self._client_key = client_key
+            if self.context and self._client_cert:
+                self.context.load_cert_chain(self._client_cert, self._client_key)
 
         def connect(self):
             "Connect to a host on a given (SSL) port."
@@ -429,10 +432,10 @@ if hasattr(httplib, 'HTTPSConnection') and hasattr(urllib_request, 'HTTPSHandler
             if HAS_SSLCONTEXT or HAS_URLLIB3_PYOPENSSLCONTEXT:
                 self.sock = self.context.wrap_socket(sock, server_hostname=server_hostname)
             elif HAS_URLLIB3_SSL_WRAP_SOCKET:
-                self.sock = ssl_wrap_socket(sock, keyfile=self.key_file, cert_reqs=ssl.CERT_NONE, certfile=self.cert_file, ssl_version=PROTOCOL,
+                self.sock = ssl_wrap_socket(sock, keyfile=self._client_key, cert_reqs=ssl.CERT_NONE, certfile=self._client_cert, ssl_version=PROTOCOL,
                                             server_hostname=server_hostname)
             else:
-                self.sock = ssl.wrap_socket(sock, keyfile=self.key_file, certfile=self.cert_file, ssl_version=PROTOCOL)
+                self.sock = ssl.wrap_socket(sock, keyfile=self._client_key, certfile=self._client_cert, ssl_version=PROTOCOL)
 
     class CustomHTTPSHandler(urllib_request.HTTPSHandler):
 
@@ -467,16 +470,14 @@ if hasattr(httplib, 'HTTPSConnection') and hasattr(urllib_request, 'HTTPSHandler
             return self.do_open(self._build_https_connection, req)
 
         def _build_https_connection(self, host, **kwargs):
-            kwargs.update({
-                'cert_file': self.client_cert,
-                'key_file': self.client_key,
-            })
             try:
                 kwargs['context'] = self._context
             except AttributeError:
                 pass
             if self._unix_socket:
                 return UnixHTTPSConnection(self._unix_socket)(host, **kwargs)
+            if not HAS_SSLCONTEXT:
+                return CustomHTTPSConnection(host, client_cert=self.client_cert, client_key=self.client_key, **kwargs)
             return httplib.HTTPSConnection(host, **kwargs)
 
     @contextmanager
