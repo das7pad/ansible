@@ -267,7 +267,7 @@ _moved_attributes = [
     MovedModule("configparser", "ConfigParser"),
     MovedModule("copyreg", "copy_reg"),
     MovedModule("dbm_gnu", "gdbm", "dbm.gnu"),
-    MovedModule("_dummy_thread", "dummy_thread", "_dummy_thread"),
+    MovedModule("_dummy_thread", "dummy_thread", "_thread"),
     MovedModule("http_cookiejar", "cookielib", "http.cookiejar"),
     MovedModule("http_cookies", "Cookie", "http.cookies"),
     MovedModule("html_entities", "htmlentitydefs", "html.entities"),
@@ -935,28 +935,3 @@ def python_2_unicode_compatible(klass):
         klass.__unicode__ = klass.__str__
         klass.__str__ = lambda self: self.__unicode__().encode('utf-8')
     return klass
-
-
-# Complete the moves implementation.
-# This code is at the end of this module to speed up module loading.
-# Turn this module into a package.
-__path__ = []  # required for PEP 302 and PEP 451
-__package__ = __name__  # see PEP 366 @ReservedAssignment
-if globals().get("__spec__") is not None:
-    __spec__.submodule_search_locations = []  # PEP 451 @UndefinedVariable
-# Remove other six meta path importers, since they cause problems. This can
-# happen if six is removed from sys.modules and then reloaded. (Setuptools does
-# this for some reason.)
-if sys.meta_path:
-    for i, importer in enumerate(sys.meta_path):
-        # Here's some real nastiness: Another "instance" of the six module might
-        # be floating around. Therefore, we can't use isinstance() to check for
-        # the six meta path importer, since the other six instance will have
-        # inserted an importer with different class.
-        if (type(importer).__name__ == "_SixMetaPathImporter" and
-                importer.name == __name__):
-            del sys.meta_path[i]
-            break
-    del i, importer
-# Finally, add the importer to the meta path import hook.
-sys.meta_path.append(_importer)
