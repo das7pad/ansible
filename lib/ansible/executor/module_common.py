@@ -894,19 +894,7 @@ def recursive_finder(name, module_fqn, data, py_module_names, py_module_cache, z
     for py_module_name in finder.submodules.difference(py_module_names):
         module_info = None
 
-        if py_module_name[0:3] == ('ansible', 'module_utils', 'six'):
-            # Special case the python six library because it messes with the
-            # import process in an incompatible way
-            module_info = ModuleInfo('six', module_utils_paths)
-            py_module_name = ('ansible', 'module_utils', 'six')
-            idx = 0
-        elif py_module_name[0:3] == ('ansible', 'module_utils', '_six'):
-            # Special case the python six library because it messes with the
-            # import process in an incompatible way
-            module_info = ModuleInfo('_six', [os.path.join(p, 'six') for p in module_utils_paths])
-            py_module_name = ('ansible', 'module_utils', 'six', '_six')
-            idx = 0
-        elif py_module_name[0] == 'ansible_collections':
+        if py_module_name[0] == 'ansible_collections':
             # FIXME (nitz): replicate module name resolution like below for granular imports
             for idx in (1, 2):
                 if len(py_module_name) < idx:
