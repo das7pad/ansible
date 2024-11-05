@@ -1593,8 +1593,17 @@ def cryptography_get_extensions_from_cert(cert):
     # (that is only stored for unrecognized extensions), we have to re-do
     # the extension parsing outselves.
     result = dict()
-    backend = cert._backend
+    backend = cryptography_backend()
+    try:
+        # For certain old versions of cryptography, backend is a MultiBackend object,
+        # which has no _lib attribute. In that case, revert to the old approach.
+        backend._lib
+    except AttributeError:
+        backend = cert._backend
     x509_obj = cert._x509
+    # With cryptography 35.0.0, we can no longer use obj2txt. Unfortunately it still does
+    # not allow to get the raw value of an extension, so we have to use this ugly hack:
+    exts = list(cert.extensions)
 
     for i in range(backend._lib.X509_get_ext_count(x509_obj)):
         ext = backend._lib.X509_get_ext(x509_obj, i)
@@ -1608,7 +1617,10 @@ def cryptography_get_extensions_from_cert(cert):
             critical=(crit == 1),
             value=base64.b64encode(der),
         )
-        oid = _obj2txt(backend._lib, backend._ffi, backend._lib.X509_EXTENSION_get_object(ext))
+        try:
+            oid = _obj2txt(backend._lib, backend._ffi, backend._lib.X509_EXTENSION_get_object(ext))
+        except AttributeError:
+            oid = exts[i].oid.dotted_string
         result[oid] = entry
     return result
 
@@ -1618,7 +1630,13 @@ def cryptography_get_extensions_from_csr(csr):
     # (that is only stored for unrecognized extensions), we have to re-do
     # the extension parsing outselves.
     result = dict()
-    backend = csr._backend
+    backend = cryptography_backend()
+    try:
+        # For certain old versions of cryptography, backend is a MultiBackend object,
+        # which has no _lib attribute. In that case, revert to the old approach.
+        backend._lib
+    except AttributeError:
+        backend = csr._backend
 
     extensions = backend._lib.X509_REQ_get_extensions(csr._x509_req)
     extensions = backend._ffi.gc(
@@ -1628,6 +1646,9 @@ def cryptography_get_extensions_from_csr(csr):
             backend._ffi.addressof(backend._lib._original_lib, "X509_EXTENSION_free")
         )
     )
+    # With cryptography 35.0.0, we can no longer use obj2txt. Unfortunately it still does
+    # not allow to get the raw value of an extension, so we have to use this ugly hack:
+    exts = list(csr.extensions)
 
     for i in range(backend._lib.sk_X509_EXTENSION_num(extensions)):
         ext = backend._lib.sk_X509_EXTENSION_value(extensions, i)
@@ -1641,7 +1662,10 @@ def cryptography_get_extensions_from_csr(csr):
             critical=(crit == 1),
             value=base64.b64encode(der),
         )
-        oid = _obj2txt(backend._lib, backend._ffi, backend._lib.X509_EXTENSION_get_object(ext))
+        try:
+            oid = _obj2txt(backend._lib, backend._ffi, backend._lib.X509_EXTENSION_get_object(ext))
+        except AttributeError:
+            oid = exts[i].oid.dotted_string
         result[oid] = entry
     return result
 
