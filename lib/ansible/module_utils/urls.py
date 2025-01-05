@@ -400,7 +400,7 @@ HTTPSClientAuthHandler = None
 UnixHTTPSConnection = None
 if hasattr(httplib, 'HTTPSConnection') and hasattr(urllib_request, 'HTTPSHandler'):
     class CustomHTTPSConnection(httplib.HTTPSConnection):
-        def __init__(self, client_cert=None, client_key=None, *args, **kwargs):
+        def __init__(self, *args, client_cert=None, client_key=None, **kwargs):
             httplib.HTTPSConnection.__init__(self, *args, **kwargs)
             self.context = None
             if HAS_SSLCONTEXT:
